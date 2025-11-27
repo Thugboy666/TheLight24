@@ -12,7 +12,10 @@ class Settings:
     API_PORT: int = int(os.getenv("THELIGHT_API_PORT", "8080"))
 
     # LLM endpoint (Aspire o remoto)
-    LLM_BASE_URL: str = os.getenv("THELIGHT_LLM_BASE_URL", "http://192.168.1.200:1234")
+    LLM_BASE_URL: str = os.getenv("THELIGHT_LLM_BASE_URL", "http://127.0.0.1:8081")
+    LLM_COMPLETION_URL: str = os.getenv(
+        "THELIGHT_LLM_COMPLETION_URL", f"{LLM_BASE_URL}/completion"
+    )
     LLM_MODEL: str = os.getenv("THELIGHT_LLM_MODEL", "local-7b")
 
     # Database

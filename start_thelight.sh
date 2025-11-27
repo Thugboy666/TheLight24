@@ -6,8 +6,15 @@ set -u
 BASEDIR="$(cd "$(dirname "$0")" && pwd)"
 RUN_DIR="$BASEDIR/run"
 LOG_DIR="$BASEDIR/logs"
+UI_INDEX="$BASEDIR/gui/index.html"
 
 mkdir -p "$RUN_DIR" "$LOG_DIR"
+
+if [ ! -f "$UI_INDEX" ]; then
+  echo "❌ File GUI mancante: $UI_INDEX"
+  echo "Assicurati che gui/index.html esista prima di avviare TheLight24."
+  exit 1
+fi
 
 echo "----- 🚀 START THELIGHT24 -----"
 echo "BASEDIR = $BASEDIR"
@@ -134,6 +141,8 @@ if [ -f "$RUN_DIR/gui.pid" ] && kill -0 "$(cat "$RUN_DIR/gui.pid")" 2>/dev/null;
 else
   echo "▶️  Avvio API+GUI (python api/server.py) su porta $API_PORT"
   (cd "$BASEDIR" && \
+    THELIGHT_UI_INDEX="$UI_INDEX" \
+    LLM_BACKEND_URL="http://127.0.0.1:${LLM_PORT}/completion" \
     nohup python api/server.py > "$LOG_DIR/gui.log" 2>&1 & echo $! > "$RUN_DIR/gui.pid")
   sleep 2
 fi
