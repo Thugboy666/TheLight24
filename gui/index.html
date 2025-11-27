@@ -945,6 +945,11 @@
           <button class="btn" id="btn-discount-add">Aggiungi / Aggiorna fascia</button>
         </div>
         <div class="html-preview" style="max-height:200px;" id="discount-rules-preview"></div>
+
+        <div class="field" style="margin-top:12px;">
+          <label><input id="mini-offer-toggle" type="checkbox" /> Mostra mini offerte (Admin)</label>
+        </div>
+        <div class="html-preview" id="mini-offer-panel"></div>
       </div>
       <div id="admin-section-import" style="display:none;">
         <h3 style="margin:4px 0;">Import Listino .XLS</h3>
@@ -986,6 +991,10 @@
     "stampanti": "/assets/textures/9.png",
     "storage": "/assets/textures/10.png",
     "consumabili-remanufactured": "/assets/textures/11.png",
+  };
+
+  const adminSettings = {
+    miniOfferEnabled: false,
   };
 
   let priceList = [];
@@ -1189,6 +1198,8 @@
   const btnDiscountAdd = document.getElementById("btn-discount-add");
   const btnDiscountRemove = document.getElementById("btn-discount-remove");
   const discountPreview = document.getElementById("discount-rules-preview");
+  const miniOfferToggle = document.getElementById("mini-offer-toggle");
+  const miniOfferPanel = document.getElementById("mini-offer-panel");
   const priceListFileInput = document.getElementById("price-list-file");
   const btnPriceListUpload = document.getElementById("btn-price-list-upload");
   const priceListPreview = document.getElementById("price-list-preview");
@@ -1245,6 +1256,16 @@
 
   btnDiscountAdd.addEventListener("click", addDiscountRule);
   btnDiscountRemove.addEventListener("click", removeDiscountRule);
+  if (miniOfferToggle) {
+    miniOfferToggle.addEventListener("change", () => {
+      adminSettings.miniOfferEnabled = miniOfferToggle.checked;
+      const productData =
+        currentEntityType === "product"
+          ? currentEntity
+          : priceList.find((p) => p) || null;
+      toggleMiniOffer(adminSettings, productData);
+    });
+  }
   btnPriceListUpload.addEventListener("click", uploadPriceList);
 
   function showToast(msg, ok = true) {
@@ -1252,6 +1273,25 @@
     toast.style.background = ok ? "rgba(22,163,74,0.9)" : "rgba(185,28,28,0.9)";
     toast.style.display = "block";
     setTimeout(() => { toast.style.display = "none"; }, 2500);
+  }
+
+  function toggleMiniOffer(adminSettings, productData) {
+    if (!miniOfferPanel) return;
+    miniOfferPanel.innerHTML = "";
+    if (!adminSettings.miniOfferEnabled || !productData) return;
+
+    const offerBox = document.createElement("div");
+    offerBox.style.display = "flex";
+    offerBox.style.alignItems = "center";
+    offerBox.style.gap = "8px";
+    offerBox.innerHTML = `
+      <img src="${productData.image || productData.image_hd || ""}" alt="${productData.name || ""}" style="width:48px;height:48px;object-fit:cover;border-radius:6px;" />
+      <div>
+        <strong>${productData.name || "Prodotto"}</strong>
+        <p style="margin:2px 0;">Prezzo: €${(productData.price || productData.base_price || 0) - (productData.discount || 0)}</p>
+      </div>
+    `;
+    miniOfferPanel.appendChild(offerBox);
   }
 
   function switchAdminTab(target) {
@@ -1466,15 +1506,59 @@
     const fd = new FormData();
     fd.append("file", file);
     try {
-      const res = await fetch(BASE_URL + "/admin/price_list/upload", {
-        method: "POST",
-        body: fd,
-      });
-      const json = await res.json();
-      priceList = json.products || [];
+      const data = await importPriceList(fd);
+      priceList = data?.products || [];
       priceListPreview.textContent = `Prodotti caricati: ${priceList.length}`;
     } catch (e) {
       priceListPreview.textContent = "Listino caricato localmente";
+    }
+  }
+
+  async function importPriceList(formData) {
+    const response = await fetch(BASE_URL + "/admin/price_list/import", {
+      method: "POST",
+      body: formData,
+    });
+    const data = await response.json();
+    console.log("Price list imported successfully:", data);
+    return data;
+  }
+
+  function getProductByID(productID) {
+    const inPriceList = priceList.find((p) => String(p.id) === String(productID));
+    if (inPriceList) return inPriceList;
+
+    for (const system of offersUniverse) {
+      for (const category of system.categories || []) {
+        for (const sub of category.subcategories || []) {
+          const found = (sub.products || []).find(
+            (p) => String(p.id) === String(productID)
+          );
+          if (found) return found;
+        }
+      }
+    }
+    return null;
+  }
+
+  function applyDiscountToProduct(productID, discount, listino) {
+    const product = getProductByID(productID);
+    if (!product) return;
+
+    product.listino = listino;
+    product.discount = discount;
+    updateProductDisplay(product);
+  }
+
+  function updateProductDisplay(product) {
+    const priceContainer = document.querySelector(
+      `#product-${product.id} .price`
+    );
+    const basePrice = Number(product.price || product.base_price || 0);
+    const discountValue = Number(product.discount || 0);
+    const finalPrice = Math.max(0, basePrice - discountValue);
+    if (priceContainer) {
+      priceContainer.textContent = `€${finalPrice.toFixed(2)}`;
     }
   }
 
@@ -1846,8 +1930,11 @@
   scene.background = new THREE.Color(0xff7b00);
 
   const textureLoader = new THREE.TextureLoader();
+  const snowflakesTexture = textureLoader.load("/assets/textures/snowflakes.png");
 
   const floatingTags = new Map();
+  const snowflakes = [];
+  let snowflakeGroup = null;
 
   function clearFloatingTags() {
     floatingTags.forEach((el) => el.remove());
@@ -1861,6 +1948,55 @@
     (appEl || document.body).appendChild(el);
     floatingTags.set(mesh, el);
     return el;
+  }
+
+  function addSnowflakes() {
+    if (snowflakeGroup) return;
+    const snowflakeMaterial = new THREE.SpriteMaterial({
+      map: snowflakesTexture,
+      color: 0xffffff,
+      opacity: 0.6,
+    });
+
+    snowflakeGroup = new THREE.Group();
+    snowflakeGroup.userData.persistent = true;
+
+    const snowflakeCount = 80;
+    for (let i = 0; i < snowflakeCount; i++) {
+      const snowflake = new THREE.Sprite(snowflakeMaterial);
+      snowflake.position.set(
+        Math.random() * 40 - 20,
+        Math.random() * 40 - 20,
+        Math.random() * 40 - 20
+      );
+      const scale = 0.4 + Math.random() * 0.8;
+      snowflake.scale.setScalar(scale);
+      snowflake.userData.velocity = 0.01 + Math.random() * 0.02;
+      snowflakes.push(snowflake);
+      snowflakeGroup.add(snowflake);
+    }
+
+    scene.add(snowflakeGroup);
+  }
+
+  function adjustObjectPosition() {
+    objects.forEach((obj) => {
+      if (obj.mesh && !obj.mesh.userData._raised) {
+        obj.mesh.position.y += 2;
+        obj.mesh.userData._raised = true;
+      }
+    });
+  }
+
+  function highlightDiscountCategory(category, mesh) {
+    if (category.discountActive) {
+      const glowEffect = new THREE.MeshStandardMaterial({
+        color: 0x00ff00,
+        emissive: 0x00ff00,
+      });
+      mesh.material = glowEffect;
+      mesh.userData.discountTag = `Sconto attivo fino a ${category.discountDate}`;
+    }
   }
 
   function updateFloatingTags() {
@@ -2035,8 +2171,13 @@
       );
       scene.add(box);
 
+      highlightDiscountCategory(cat, box);
+
       objects.push({ type: "category", ref: cat, mesh: box, orbitRadius, angle });
-      createFloatingTagForObject(box, cat.name);
+      const tagText = cat.discountActive && cat.discountDate
+        ? `${cat.name} • ${cat.discountDate}`
+        : cat.name;
+      createFloatingTagForObject(box, tagText);
 
       // Satelliti per sottocategorie
       const satGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
@@ -2074,6 +2215,7 @@
         objects.push({ type: "subcategory", ref: sub, mesh: sat });
       });
     });
+    adjustObjectPosition();
   }
 
   function buildPlanetView(category, subcategory) {
@@ -2144,12 +2286,19 @@
       scene.add(satellite);
       objects.push({ type: "product", ref: prod, mesh: satellite });
     });
+    adjustObjectPosition();
   }
 
   function clearDynamicObjects() {
     const keep = [];
     scene.children.forEach(obj => {
-      if (obj.type === "AmbientLight" || obj.type === "PointLight") keep.push(obj);
+      if (
+        obj.type === "AmbientLight" ||
+        obj.type === "PointLight" ||
+        obj.userData?.persistent
+      ) {
+        keep.push(obj);
+      }
     });
     scene.children.slice().forEach(obj => {
       if (!keep.includes(obj)) scene.remove(obj);
@@ -2159,6 +2308,8 @@
 
   addGalaxy();
   addSystems();
+  addSnowflakes();
+  adjustObjectPosition();
 
   // CAMERA & CONTROLS
   let isDragging = false;
@@ -2558,6 +2709,11 @@
 
     scene.rotation.y += (targetRotY - scene.rotation.y) * 0.08;
     scene.rotation.x += (targetRotX - scene.rotation.x) * 0.08;
+
+    snowflakes.forEach((snowflake) => {
+      snowflake.position.y -= snowflake.userData.velocity || 0.01;
+      if (snowflake.position.y < -20) snowflake.position.y = 20;
+    });
 
     renderer.render(scene, camera);
     updateFloatingTags();
