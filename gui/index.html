@@ -667,7 +667,7 @@
   <div class="backdrop" id="sheet-chat-ai">
     <div class="sheet">
       <h2>Chat AI locale</h2>
-      <p>Assistente LLM eseguito in locale su Termux (porta 8081).</p>
+      <p>Assistente LLM locale (Phi-3 Mini via llama.cpp). Avvia <code>start_thelight.sh</code> per caricare il modello su porta 8081.</p>
 
       <div id="chat-log" class="chat-log">
         <!-- messaggi -->
@@ -809,7 +809,7 @@
 
 <script>
   const BASE_URL = ""; // stesso host/porta per backend ecom
-  const LLM_URL  = "/api/llm/chat"; // server Phi-3 su Termux
+  const LLM_URL  = "/api/llm/chat"; // proxy verso il modello Phi-3 locale
 
   let currentUser = {
     logged: false,
@@ -1872,7 +1872,7 @@
       const reply = (data && data.content) ? data.content : JSON.stringify(data);
       appendChatMessage("assistant", reply.trim());
     } catch (e) {
-      appendChatMessage("system", "Errore nel contattare il modello su 127.0.0.1:8081");
+      appendChatMessage("system", "Errore nel contattare il modello locale (controlla start_thelight.sh)");
     }
   }
 

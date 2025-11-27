@@ -7,7 +7,7 @@ from aiohttp import ClientSession, web
 # ================== CONFIG BASE ==================
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-UI_INDEX = BASE_DIR / "ui" / "index.html"
+UI_INDEX = BASE_DIR / "gui" / "index.html"
 
 # backend LLM locale (Termux / llama.cpp / phi ecc.)
 LLM_BACKEND_URL = os.environ.get("LLM_BACKEND_URL", "http://127.0.0.1:8081/completion")
