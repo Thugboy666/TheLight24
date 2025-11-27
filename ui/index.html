@@ -853,13 +853,12 @@ index 4195cf89207843a6778c12b65f4566f8c87c9b8a..9bb1a864eafc2f318ff3cbf780126944
    const toast = document.getElementById("toast");
  
    const entityCard = document.getElementById("entity-card");
-@@ -1850,51 +1850,51 @@
-   async function sendChatMessage() {
-     if (!chatInput) return;
-     const text = chatInput.value.trim();
-     if (!text) return;
-     chatInput.value = "";
-     appendChatMessage("user", text);
+    async function sendChatMessage() {
+      if (!chatInput) return;
+      const text = chatInput.value.trim();
+      if (!text) return;
+      chatInput.value = "";
+      appendChatMessage("user", text);
  
      const payload = {
        prompt: `Sei un assistente AI locale, integrato nella GUI TheLight24 Universe. Rispondi in italiano.\n\nUtente: ${text}\nAssistente:`,
@@ -869,20 +868,42 @@ index 4195cf89207843a6778c12b65f4566f8c87c9b8a..9bb1a864eafc2f318ff3cbf780126944
        top_p: 0.9
      };
  
-     try {
-       const res = await fetch(LLM_URL, {
-         method: "POST",
-         headers: {"Content-Type": "application/json"},
-         body: JSON.stringify(payload)
-       });
-       const data = await res.json();
-       const reply = (data && data.content) ? data.content : JSON.stringify(data);
-       appendChatMessage("assistant", reply.trim());
-     } catch (e) {
--      appendChatMessage("system", "Errore nel contattare il modello su 127.0.0.1:8081");
-+      appendChatMessage("system", "Errore nel contattare il modello locale (controlla start_thelight.sh)");
-     }
-   }
+    try {
+      const res = await fetch(LLM_URL, {
+        method: "POST",
+        headers: {"Content-Type": "application/json"},
+        body: JSON.stringify(payload)
+      });
+      const data = await res.json();
+
+      let reply = "";
+
+      if (data && typeof data.content === "string") {
+        reply = data.content;
+      } else if (data && Array.isArray(data.content)) {
+        reply = data.content
+          .map((p) => (typeof p === "string" ? p : (p && p.content) || ""))
+          .join("");
+      } else if (data && Array.isArray(data.choices) && data.choices.length) {
+        const ch = data.choices[0];
+        if (typeof ch.text === "string") {
+          reply = ch.text;
+        } else if (ch.message && typeof ch.message.content === "string") {
+          reply = ch.message.content;
+        }
+      } else {
+        reply = JSON.stringify(data, null, 2);
+      }
+
+      if (!reply) {
+        reply = "[Nessun testo ricevuto dal modello]";
+      }
+
+      appendChatMessage("assistant", String(reply).trim());
+    } catch (e) {
+      appendChatMessage("system", "Errore nel contattare il modello locale (controlla start_thelight.sh)");
+    }
+  }
  
    if (btnChat) {
      btnChat.addEventListener("click", () => {
