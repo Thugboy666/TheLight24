@@ -1,0 +1,28 @@
+cat > .gitignore << 'EOF'
+# Python / venv
+.venv/
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Dati pesanti / modelli
+data/models/
+data/checkpoints/
+*.gguf
+*.bin
+*.pt
+*.onnx
+
+# Log e roba inutile
+logs/
+*.log
+.DS_Store
+
+# File temporanei editor
+.vscode/
+.idea/
+*.swp
+*.swo
+EOF
