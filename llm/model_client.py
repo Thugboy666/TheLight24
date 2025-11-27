@@ -4,7 +4,7 @@ from core.config import settings
 from core.logger import logger
 
 async def complete_text(prompt: str, max_tokens: int = 256, temperature: float = 0.7) -> str:
-    url = f"{settings.LLM_BASE_URL}/v1/completions"
+    url = settings.LLM_COMPLETION_URL
     system_prompt = get_system_prompt("system")
     payload = {
         "model": settings.LLM_MODEL,

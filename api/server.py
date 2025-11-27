@@ -8,7 +8,24 @@ from aiohttp import web
 # ================== CONFIG BASE ==================
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-UI_INDEX = BASE_DIR / "gui" / "index.html"
+
+
+def _resolve_ui_index() -> Path:
+    """Return the index.html path (overridable via THELIGHT_UI_INDEX)."""
+
+    candidate = os.environ.get("THELIGHT_UI_INDEX")
+    if candidate:
+        ui_path = Path(candidate).expanduser().resolve()
+    else:
+        ui_path = BASE_DIR / "gui" / "index.html"
+
+    if not ui_path.is_file():
+        raise FileNotFoundError(f"GUI index non trovato: {ui_path}")
+
+    return ui_path
+
+
+UI_INDEX = _resolve_ui_index()
 
 # backend LLM locale (Termux / llama.cpp / phi ecc.)
 #   - LLM_BACKEND_URL ha priorità e può puntare già all'endpoint completo
