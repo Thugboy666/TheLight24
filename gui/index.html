@@ -41,6 +41,7 @@
       background: linear-gradient(to bottom, rgba(15,23,42,0.95), rgba(15,23,42,0.0));
       z-index: 20;
       gap: 6px;
+      flex-wrap: wrap;
     }
     #brand {
       display: flex;
@@ -62,6 +63,13 @@
       overflow: hidden;
       text-overflow: ellipsis;
       max-width: 140px;
+    }
+    #top-bar-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-left: auto;
+      flex-wrap: wrap;
     }
     #user-panel {
       display: flex;
@@ -98,45 +106,41 @@
     .btn:active { transform: scale(0.97); }
 
     @media (max-width: 480px) {
-      #top-bar { padding: 4px 6px; }
+      #top-bar {
+        padding: 4px 6px;
+        flex-direction: column;
+        align-items: stretch;
+        gap: 8px;
+      }
       #brand-title { font-size: 11px; }
       #brand-sub { display: none; }
-      #user-panel { gap: 4px; }
-      #btn-cart, #btn-login, #btn-register {
+      #top-bar-right {
+        gap: 6px;
+        width: 100%;
+        justify-content: space-between;
+      }
+      #user-panel {
+        gap: 4px;
+        flex: 1 1 auto;
+        justify-content: flex-start;
+      }
+      #btn-cart, #btn-login, #btn-register, #btn-back, #btn-chat-ai {
         padding-inline: 6px;
         font-size: 10px;
       }
       #tier-pill { display: none; }
+      #global-controls {
+        width: 100%;
+        justify-content: flex-end;
+      }
     }
 
     /* Top-right controls (Indietro + Chat AI) */
-    #top-right-controls {
-      position: absolute;
-      top: 6px;
-      right: 6px;
-      z-index: 25;
+    #global-controls {
       display: flex;
-      flex-direction: column;
-      align-items: flex-end;
-      gap: 4px;
-      pointer-events: none; /* noi riabilitiamo sui bottoni */
-    }
-    .top-ctrl-btn {
-      pointer-events: auto;
-      font-size: 10px;
-      padding: 4px 8px;
-      border-radius: 999px;
-      border: 1px solid rgba(148,163,184,0.7);
-      background: rgba(15,23,42,0.96);
-      color: #e5e7eb;
-      cursor: pointer;
-      display: inline-flex;
+      gap: 6px;
       align-items: center;
-      gap: 4px;
-    }
-    .top-ctrl-btn span.icon {
-      font-size: 11px;
-      opacity: 0.9;
+      flex-wrap: wrap;
     }
 
     /* Bottom info panel */
@@ -422,20 +426,10 @@
       cursor: pointer;
     }
     
-    /* Controlli globali sopra tutto */
-#global-controls {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  z-index: 80; /* sopra top-bar, nav, sheet normali */
-  display: flex;
-  gap: 6px;
-}
-
-/* Chat log */
-.chat-log {
-  border-radius: 8px;
-  border: 1px solid #374151;
+    /* Chat log */
+    .chat-log {
+      border-radius: 8px;
+      border: 1px solid #374151;
   background: #020617;
   padding: 8px;
   font-size: 11px;
@@ -485,22 +479,23 @@
       <div id="brand-title">THELIGHT24 UNIVERSE</div>
       <div id="brand-sub">Galaxy of Shops • Touch to navigate</div>
     </div>
-    <div id="user-panel">
-      <div class="pill" id="tier-pill">
-        <span class="label">Listino:</span>
-        <span id="tier-label">ospite</span>
+    <div id="top-bar-right">
+      <div id="user-panel">
+        <div class="pill" id="tier-pill">
+          <span class="label">Listino:</span>
+          <span id="tier-label">ospite</span>
+        </div>
+        <button class="btn secondary" id="btn-cart">Carrello (0)</button>
+        <button class="btn secondary" id="btn-login">Login</button>
+        <button class="btn" id="btn-register">Registrati</button>
       </div>
-      <button class="btn secondary" id="btn-cart">Carrello (0)</button>
-      <button class="btn secondary" id="btn-login">Login</button>
-      <button class="btn" id="btn-register">Registrati</button>
+      <!-- TOP RIGHT: INDIETRO + CHAT AI -->
+      <!-- CONTROLLI GLOBALI (sempre visibili) -->
+      <div id="global-controls">
+        <button class="btn secondary" id="btn-back">← Indietro</button>
+        <button class="btn" id="btn-chat-ai">✦ Chat AI</button>
+      </div>
     </div>
-  </div>
-
-  <!-- TOP RIGHT: INDIETRO + CHAT AI -->
-<!-- CONTROLLI GLOBALI (sempre visibili) -->
-  <div id="global-controls">
-    <button class="btn secondary" id="btn-back">← Indietro</button>
-    <button class="btn" id="btn-chat-ai">✦ Chat AI</button>
   </div>
 
   <!-- BOTTOM PANEL -->
@@ -808,8 +803,10 @@
 </div>
 
 <script>
-  const BASE_URL = ""; // stesso host/porta per backend ecom
-  const LLM_URL  = "/api/llm/chat"; // proxy verso il modello Phi-3 locale
+  const DEFAULT_API = "http://127.0.0.1:8080";
+  const origin = window.location.origin;
+  const BASE_URL = origin && origin.startsWith("http") ? origin : DEFAULT_API; // backend ecom/API
+  const LLM_URL  = `${BASE_URL}/api/llm/chat`; // proxy verso il modello Phi-3 locale
 
   let currentUser = {
     logged: false,
@@ -884,11 +881,14 @@
   const chatInput = document.getElementById("chat-input");
   const btnChatSend = document.getElementById("btn-chat-send");
   const btnChatClose = document.getElementById("btn-chat-close");
+  const llmStatus = document.getElementById("llm-status");
   const btnBack = document.getElementById("btn-back");
   const btnChat = document.getElementById("btn-chat-ai");
 
   const showSheet = (el) => { if (el) el.style.display = "flex"; };
   const hideSheet = (el) => { if (el) el.style.display = "none"; };
+
+  setLlmStatus("In attesa di connessione al modello locale…");
 
   document.getElementById("btn-register").addEventListener("click", () => showSheet(sheetRegister));
   document.getElementById("btn-reg-cancel").addEventListener("click", () => hideSheet(sheetRegister));
@@ -1847,12 +1847,44 @@
     chatLog.scrollTop = chatLog.scrollHeight;
   }
 
+  function setLlmStatus(msg, isError = false) {
+    if (!llmStatus) return;
+    llmStatus.textContent = msg;
+    llmStatus.style.color = isError ? "#fca5a5" : "#9ca3af";
+  }
+
+  let llmProbeInFlight = false;
+  async function pingLlm() {
+    if (llmProbeInFlight) return;
+    llmProbeInFlight = true;
+    setLlmStatus("Verifico la connessione al modello locale…");
+    try {
+      const res = await fetch(LLM_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ prompt: "ping", n_predict: 8 })
+      });
+      const data = await res.json();
+      if (!res.ok || data?.error) {
+        throw new Error(data?.detail || data?.error || `HTTP ${res.status}`);
+      }
+      setLlmStatus("LLM locale pronto.");
+    } catch (err) {
+      const detail = err?.message ? ` (${err.message})` : "";
+      setLlmStatus(`LLM non raggiungibile. Avvia start_thelight.sh${detail}`, true);
+    } finally {
+      llmProbeInFlight = false;
+    }
+  }
+
   async function sendChatMessage() {
     if (!chatInput) return;
     const text = chatInput.value.trim();
     if (!text) return;
     chatInput.value = "";
     appendChatMessage("user", text);
+
+    setLlmStatus("Invio richiesta al modello locale…");
 
     const payload = {
       prompt: `Sei un assistente AI locale, integrato nella GUI TheLight24 Universe. Rispondi in italiano.\n\nUtente: ${text}\nAssistente:`,
@@ -1869,16 +1901,24 @@
         body: JSON.stringify(payload)
       });
       const data = await res.json();
+      if (!res.ok || data?.error) {
+        const errMsg = data?.detail || data?.error || `HTTP ${res.status}`;
+        throw new Error(errMsg);
+      }
       const reply = (data && data.content) ? data.content : JSON.stringify(data);
       appendChatMessage("assistant", reply.trim());
+      setLlmStatus("LLM locale pronto.");
     } catch (e) {
-      appendChatMessage("system", "Errore nel contattare il modello locale (controlla start_thelight.sh)");
+      const fallbackMsg = "LLM locale non raggiungibile. Avvia start_thelight.sh (porta 8081).";
+      appendChatMessage("system", fallbackMsg);
+      setLlmStatus(`${fallbackMsg}${e?.message ? ` (${e.message})` : ""}`, true);
     }
   }
 
   if (btnChat) {
     btnChat.addEventListener("click", () => {
       showSheet(sheetChat);
+      pingLlm();
       if (chatInput) chatInput.focus();
     });
   }
