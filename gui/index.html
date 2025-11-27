@@ -1905,8 +1905,30 @@
         const errMsg = data?.detail || data?.error || `HTTP ${res.status}`;
         throw new Error(errMsg);
       }
-      const reply = (data && data.content) ? data.content : JSON.stringify(data);
-      appendChatMessage("assistant", reply.trim());
+      let reply = "";
+
+      if (data && typeof data.content === "string") {
+        reply = data.content;
+      } else if (data && Array.isArray(data.content)) {
+        reply = data.content
+          .map(p => (typeof p === "string" ? p : (p && p.content) || ""))
+          .join("");
+      } else if (data && Array.isArray(data.choices) && data.choices.length) {
+        const ch = data.choices[0];
+        if (typeof ch.text === "string") {
+          reply = ch.text;
+        } else if (ch.message && typeof ch.message.content === "string") {
+          reply = ch.message.content;
+        }
+      } else {
+        reply = JSON.stringify(data, null, 2);
+      }
+
+      if (!reply) {
+        reply = "[Nessun testo ricevuto dal modello]";
+      }
+
+      appendChatMessage("assistant", String(reply).trim());
       setLlmStatus("LLM locale pronto.");
     } catch (e) {
       const fallbackMsg = "LLM locale non raggiungibile. Avvia start_thelight.sh (porta 8081).";
