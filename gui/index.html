@@ -5,13 +5,15 @@
   <title>TheLight24 Universe – B2B Console</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
-    :root { color-scheme: dark; }
+    :root {
+      color-scheme: light;
+    }
     * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
     body {
       margin: 0;
       font-family: system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
-      background: radial-gradient(circle at top, #020617, #000);
-      color: #e5e7eb;
+      background: #2596be;
+      color: #000000;
       overflow: hidden;
       height: 100dvh;
     }
@@ -38,7 +40,7 @@
       display: flex;
       align-items: center;
       justify-content: space-between;
-      background: linear-gradient(to bottom, rgba(15,23,42,0.95), rgba(15,23,42,0.0));
+      background: rgba(255,255,255,0.9);
       z-index: 20;
       gap: 6px;
     }
@@ -54,14 +56,21 @@
       letter-spacing: 0.08em;
       text-transform: uppercase;
       white-space: nowrap;
+      display: none;
+    }
+    #brand-logo {
+      max-width: 140px;
+      height: auto;
+      display: block;
     }
     #brand-sub {
       font-size: 10px;
-      opacity: 0.7;
+      opacity: 0.9;
       white-space: nowrap;
       overflow: hidden;
       text-overflow: ellipsis;
-      max-width: 140px;
+      max-width: 160px;
+      color: #000000;
     }
     #user-panel {
       display: flex;
@@ -73,27 +82,29 @@
       font-size: 10px;
       padding: 4px 8px;
       border-radius: 999px;
-      border: 1px solid rgba(148,163,184,0.4);
-      background: rgba(15,23,42,0.85);
+      border: 1px solid #2596be;
+      background: #ffffff;
       display: inline-flex;
       align-items: center;
       gap: 4px;
       white-space: nowrap;
+      color: #000000;
     }
     .pill span.label { opacity: 0.7; }
     .btn {
       font-size: 11px;
       border-radius: 999px;
       padding: 4px 10px;
-      border: 0;
-      color: #e5e7eb;
-      background: #2563eb;
+      border: 1px solid #2596be;
+      color: #000000;
+      background: #ffffff;
       cursor: pointer;
       white-space: nowrap;
     }
     .btn.secondary {
-      background: transparent;
-      border: 1px solid rgba(148,163,184,0.6);
+      background: #ffffff;
+      border: 1px solid #2596be;
+      color: #000000;
     }
     .btn:active { transform: scale(0.97); }
 
@@ -126,9 +137,9 @@
       font-size: 10px;
       padding: 4px 8px;
       border-radius: 999px;
-      border: 1px solid rgba(148,163,184,0.7);
-      background: rgba(15,23,42,0.96);
-      color: #e5e7eb;
+      border: 1px solid #2596be;
+      background: #ffffff;
+      color: #000000;
       cursor: pointer;
       display: inline-flex;
       align-items: center;
@@ -161,20 +172,21 @@
       display: flex;
       flex-direction: column;
       gap: 6px;
-      background: linear-gradient(to top, rgba(15,23,42,0.98), rgba(15,23,42,0.0));
+      background: rgba(255,255,255,0.9);
     }
     #zoom-level { font-size: 11px; opacity: 0.8; }
     #location-path { font-size: 11px; opacity: 0.9; }
     #hint { font-size: 10px; opacity: 0.7; }
     #entity-card {
       margin-top: 4px;
-      background: rgba(15,23,42,0.97);
+      background: #ffffff;
       border-radius: 14px;
       padding: 8px;
-      border: 1px solid rgba(55,65,81,0.9);
+      border: 1px solid #2596be;
       display: none;
       flex-direction: column;
       gap: 4px;
+      color: #000000;
     }
     #entity-type {
       font-size: 10px;
@@ -195,15 +207,15 @@
     #entity-price {
       font-size: 13px;
       font-weight: 600;
-      color: #22c55e;
+      color: #000000;
     }
     #entity-qty {
       width: 60px;
       border-radius: 999px;
       padding: 3px 6px;
-      border: 1px solid #374151;
-      background: #020617;
-      color: #e5e7eb;
+      border: 1px solid #2596be;
+      background: #ffffff;
+      color: #000000;
       font-size: 11px;
     }
     #entity-tags {
@@ -237,9 +249,9 @@
     }
     .icon-btn {
       border-radius: 999px;
-      border: 1px solid rgba(148,163,184,0.6);
-      background: rgba(15,23,42,0.92);
-      color: #e5e7eb;
+      border: 1px solid #2596be;
+      background: #ffffff;
+      color: #000000;
       font-size: 12px;
       padding: 6px 10px;
       display: flex;
@@ -253,7 +265,7 @@
     .backdrop {
       position: absolute;
       inset: 0;
-      background: rgba(15,23,42,0.85);
+      background: rgba(0,0,0,0.25);
       display: none;
       align-items: flex-end;
       justify-content: center;
@@ -262,11 +274,12 @@
     .sheet {
       width: 100%;
       max-height: 88dvh;
-      background: #020617;
+      background: #ffffff;
       border-radius: 18px 18px 0 0;
       padding: 10px 14px 14px;
-      border: 1px solid #1f2937;
+      border: 1px solid #2596be;
       overflow-y: auto;
+      color: #000000;
     }
     .sheet h2 {
       font-size: 14px;
@@ -291,9 +304,9 @@
       width: 100%;
       padding: 6px 8px;
       border-radius: 8px;
-      border: 1px solid #374151;
-      background: #020617;
-      color: #e5e7eb;
+      border: 1px solid #2596be;
+      background: #ffffff;
+      color: #000000;
       font-size: 12px;
     }
     .field textarea {
@@ -322,12 +335,13 @@
 
     .html-preview {
       border-radius: 8px;
-      border: 1px solid #374151;
+      border: 1px solid #2596be;
       padding: 6px 8px;
       font-size: 11px;
-      background: #020617;
+      background: #ffffff;
       max-height: 160px;
       overflow-y: auto;
+      color: #000000;
     }
 
     /* Cart */
@@ -343,7 +357,7 @@
       justify-content: space-between;
       gap: 4px;
       padding: 4px 0;
-      border-bottom: 1px solid rgba(31,41,55,0.8);
+      border-bottom: 1px solid #2596be;
     }
     .cart-main { flex: 1; }
     .cart-sku { font-size: 9px; opacity: 0.6; }
@@ -362,7 +376,7 @@
       left: 50%;
       transform: translateX(-50%);
       background: rgba(22,163,74,0.9);
-      color: #ecfdf5;
+      color: #000000;
       font-size: 11px;
       padding: 6px 10px;
       border-radius: 999px;
@@ -377,10 +391,10 @@
     }
     #llm-chat-log {
       border-radius: 10px;
-      border: 1px solid #374151;
+      border: 1px solid #2596be;
       padding: 6px 8px;
       font-size: 11px;
-      background: #020617;
+      background: #ffffff;
       max-height: 260px;
       overflow-y: auto;
       display: flex;
@@ -396,13 +410,13 @@
     }
     .llm-msg.user {
       align-self: flex-end;
-      background: rgba(37,99,235,0.15);
-      border: 1px solid rgba(59,130,246,0.6);
+      background: rgba(37,150,190,0.15);
+      border: 1px solid #2596be;
     }
     .llm-msg.bot {
       align-self: flex-start;
-      background: rgba(15,23,42,0.9);
-      border: 1px solid rgba(55,65,81,0.9);
+      background: #ffffff;
+      border: 1px solid #2596be;
     }
     #llm-status {
       font-size: 10px;
@@ -418,9 +432,9 @@
       flex: 1;
       padding: 6px 8px;
       border-radius: 999px;
-      border: 1px solid #374151;
-      background: #020617;
-      color: #e5e7eb;
+      border: 1px solid #2596be;
+      background: #ffffff;
+      color: #000000;
       font-size: 11px;
     }
     #btn-llm-send {
@@ -442,8 +456,9 @@
   <!-- TOP BAR -->
   <div id="top-bar">
     <div id="brand">
-      <div id="brand-title">THELIGHT24 UNIVERSE</div>
-      <div id="brand-sub">Galaxy of Shops • Touch to navigate</div>
+      <img id="brand-logo" src="assets/logo_ormanet.png" alt="Ormanet" />
+      <div id="brand-sub">powered by thelight24</div>
+      <div id="brand-title"></div>
     </div>
     <div id="user-panel">
       <div class="pill" id="tier-pill">
@@ -620,6 +635,7 @@
       <div id="cart-total">Totale: 0,00 €</div>
 
       <div class="sheet-actions">
+        <button class="btn secondary" id="btn-cart-back">Indietro</button>
         <button class="btn secondary" id="btn-cart-clear">Svuota</button>
         <button class="btn" id="btn-cart-checkout">Invia richiesta</button>
       </div>
@@ -792,6 +808,7 @@
   const cartListEl = document.getElementById("cart-list");
   const cartTotalEl = document.getElementById("cart-total");
   const btnCart = document.getElementById("btn-cart");
+  const btnCartBack = document.getElementById("btn-cart-back");
 
   const sheetProduct = document.getElementById("sheet-product-editor");
   const skuInput = document.getElementById("prod-sku");
@@ -836,6 +853,11 @@
   document.getElementById("btn-login").addEventListener("click", () => showSheet(sheetLogin));
   document.getElementById("btn-login-cancel").addEventListener("click", () => hideSheet(sheetLogin));
   btnCart.addEventListener("click", () => showSheet(sheetCart));
+  if (btnCartBack) {
+    btnCartBack.addEventListener("click", () => {
+      hideSheet(sheetCart);
+    });
+  }
   document.getElementById("btn-cart-clear").addEventListener("click", () => { cart = []; updateCartUI(); });
   document.getElementById("btn-cart-checkout").addEventListener("click", checkoutCart);
   document.getElementById("btn-up").addEventListener("click", goUpOneLevel);
@@ -1265,7 +1287,9 @@
 
   // === THREE.JS SCENE ===
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x020617);
+  scene.background = new THREE.Color(0x2596be);
+
+  const textureLoader = new THREE.TextureLoader();
 
   const camera = new THREE.PerspectiveCamera(
     60,
@@ -1288,35 +1312,56 @@
   const objects = [];
 
   function addGalaxy() {
-    const starGeo = new THREE.BufferGeometry();
-    const starCount = 650;
-    const positions = new Float32Array(starCount * 3);
-    for (let i = 0; i < starCount * 3; i += 3) {
-      positions[i] = (Math.random() - 0.5) * 60;
-      positions[i + 1] = (Math.random() - 0.5) * 60;
-      positions[i + 2] = (Math.random() - 0.5) * 60;
+    const group = new THREE.Group();
+    const starCount = 120;
+
+    for (let i = 0; i < starCount; i++) {
+      const size = 0.15;
+      const geo = new THREE.BoxGeometry(size, size, size);
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        metalness: 0.1,
+        roughness: 0.4
+      });
+      const box = new THREE.Mesh(geo, mat);
+      box.position.set(
+        (Math.random() - 0.5) * 40,
+        (Math.random() - 0.5) * 40,
+        (Math.random() - 0.5) * 40
+      );
+      group.add(box);
     }
-    starGeo.setAttribute("position", new THREE.BufferAttribute(positions, 3));
-    const starMat = new THREE.PointsMaterial({ color: 0x38bdf8, size: 0.09 });
-    const stars = new THREE.Points(starGeo, starMat);
-    scene.add(stars);
+    scene.add(group);
   }
 
   function addSystems() {
     universe.systems.forEach((sys, idx) => {
-      const geo = new THREE.SphereGeometry(0.9, 32, 32);
-      const mat = new THREE.MeshStandardMaterial({
-        color: idx === 0 ? 0x0ea5e9 : 0x8b5cf6,
-        emissive: idx === 0 ? 0x38bdf8 : 0x6366f1,
-        emissiveIntensity: 0.8,
-        metalness: 0.6,
-        roughness: 0.25
-      });
-      const sphere = new THREE.Mesh(geo, mat);
-      sphere.position.set(sys.position.x, sys.position.y + 0.5, sys.position.z);
-      scene.add(sphere);
+      const size = 1.4;
+      const geo = new THREE.BoxGeometry(size, size, size);
 
-      objects.push({ type: "system", ref: sys, mesh: sphere });
+      let map = null;
+      try {
+        map = textureLoader.load(
+          `assets/textures/systems/${sys.id}.png`,
+          undefined,
+          undefined,
+          () => {}
+        );
+      } catch (e) {
+        map = null;
+      }
+
+      const mat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map,
+        metalness: 0.4,
+        roughness: 0.3
+      });
+      const box = new THREE.Mesh(geo, mat);
+      box.position.set(sys.position.x, sys.position.y + 0.5, sys.position.z);
+      scene.add(box);
+
+      objects.push({ type: "system", ref: sys, mesh: box });
     });
   }
 
@@ -1327,54 +1372,88 @@
     targetRotX = 0;
     targetRotY = 0;
 
-    const center = new THREE.Mesh(
-      new THREE.SphereGeometry(1.1, 32, 32),
-      new THREE.MeshStandardMaterial({
-        color: 0xfacc15,
-        emissive: 0xfbbf24,
-        emissiveIntensity: 1.2,
-        metalness: 0.7,
-        roughness: 0.25
-      })
-    );
+    const centerGeo = new THREE.BoxGeometry(1.6, 1.6, 1.6);
+    let centerMap = null;
+    try {
+      centerMap = textureLoader.load(
+        `assets/textures/systems/${system.id}_center.png`,
+        undefined,
+        undefined,
+        () => {}
+      );
+    } catch (e) {
+      centerMap = null;
+    }
+    const centerMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: centerMap,
+      metalness: 0.4,
+      roughness: 0.3
+    });
+    const center = new THREE.Mesh(centerGeo, centerMat);
     center.position.set(0, 1, 0);
     scene.add(center);
     objects.push({ type: "system-center", ref: system, mesh: center });
 
     const radiusBase = 3.2;
+    const catGeo = new THREE.BoxGeometry(1.0, 1.0, 1.0);
+
     system.categories.forEach((cat, idx) => {
       const orbitRadius = radiusBase + idx * 1.3;
 
-      const planet = new THREE.Mesh(
-        new THREE.SphereGeometry(0.5, 26, 26),
-        new THREE.MeshStandardMaterial({
-          color: cat.color || 0x22c55e,
-          emissive: cat.color || 0x22c55e,
-          emissiveIntensity: 0.35,
-          metalness: 0.5,
-          roughness: 0.4
-        })
-      );
+      let catMap = null;
+      try {
+        catMap = textureLoader.load(
+          `assets/textures/categories/${cat.id}.png`,
+          undefined,
+          undefined,
+          () => {}
+        );
+      } catch (e) {
+        catMap = null;
+      }
+
+      const catMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: catMap,
+        metalness: 0.3,
+        roughness: 0.4
+      });
+
+      const box = new THREE.Mesh(catGeo, catMat);
       const angle = (idx / system.categories.length) * Math.PI * 2;
-      planet.position.set(
+      box.position.set(
         orbitRadius * Math.cos(angle),
         1,
         orbitRadius * Math.sin(angle)
       );
-      scene.add(planet);
-      objects.push({ type: "category", ref: cat, mesh: planet, orbitRadius, angle });
+      scene.add(box);
 
+      objects.push({ type: "category", ref: cat, mesh: box, orbitRadius, angle });
+
+      // Satelliti per sottocategorie
+      const satGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
       cat.subcategories?.forEach((sub, jdx) => {
-        const sat = new THREE.Mesh(
-          new THREE.SphereGeometry(0.18, 18, 18),
-          new THREE.MeshStandardMaterial({
-            color: 0x38bdf8,
-            emissive: 0x38bdf8,
-            emissiveIntensity: 0.5,
-            metalness: 0.4,
-            roughness: 0.6
-          })
-        );
+        let subMap = null;
+        try {
+          subMap = textureLoader.load(
+            `assets/textures/categories/${sub.id}.png`,
+            undefined,
+            undefined,
+            () => {}
+          );
+        } catch (e) {
+          subMap = null;
+        }
+
+        const satMat = new THREE.MeshStandardMaterial({
+          color: 0xffffff,
+          map: subMap,
+          metalness: 0.3,
+          roughness: 0.5
+        });
+
+        const sat = new THREE.Mesh(satGeo, satMat);
         const satAngle = angle + (jdx + 1) * 0.7;
         const satRadius = orbitRadius * 1.18;
         sat.position.set(
@@ -1395,41 +1474,54 @@
     targetRotX = 0;
     targetRotY = 0;
 
-    const planet = new THREE.Mesh(
-      new THREE.SphereGeometry(1.6, 36, 36),
-      new THREE.MeshStandardMaterial({
-        color: category.color || 0x22c55e,
-        emissive: category.color || 0x22c55e,
-        emissiveIntensity: 0.4,
-        metalness: 0.6,
-        roughness: 0.35
-      })
-    );
+    const planetGeo = new THREE.BoxGeometry(2.0, 2.0, 2.0);
+    let planetMap = null;
+    try {
+      planetMap = textureLoader.load(
+        `assets/textures/categories/${category.id}_planet.png`,
+        undefined,
+        undefined,
+        () => {}
+      );
+    } catch (e) {
+      planetMap = null;
+    }
+    const planetMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: planetMap,
+      metalness: 0.4,
+      roughness: 0.3
+    });
+    const planet = new THREE.Mesh(planetGeo, planetMat);
     planet.position.set(0, 1, 0);
     scene.add(planet);
     objects.push({ type: "planet", ref: { category, subcategory }, mesh: planet });
 
     const products = subcategory.products || [];
-    products.forEach((prod, idx) => {
-      const ringRadius = 2.4 + idx * 0.5;
-      const ring = new THREE.Mesh(
-        new THREE.TorusGeometry(ringRadius, 0.035, 8, 40),
-        new THREE.MeshBasicMaterial({ color: 0x93c5fd, wireframe: false })
-      );
-      ring.rotation.x = Math.PI / 2;
-      ring.position.y = 1;
-      scene.add(ring);
+    const prodGeo = new THREE.BoxGeometry(0.7, 0.7, 0.7);
 
-      const satellite = new THREE.Mesh(
-        new THREE.SphereGeometry(0.22, 18, 18),
-        new THREE.MeshStandardMaterial({
-          color: 0x38bdf8,
-          emissive: 0x38bdf8,
-          emissiveIntensity: 0.8,
-          metalness: 0.5,
-          roughness: 0.4
-        })
-      );
+    products.forEach((prod, idx) => {
+      let prodMap = null;
+      try {
+        prodMap = textureLoader.load(
+          `assets/textures/products/${prod.sku}.png`,
+          undefined,
+          undefined,
+          () => {}
+        );
+      } catch (e) {
+        prodMap = null;
+      }
+
+      const prodMat = new THREE.MeshStandardMaterial({
+        color: 0xffffff,
+        map: prodMap,
+        metalness: 0.3,
+        roughness: 0.5
+      });
+
+      const satellite = new THREE.Mesh(prodGeo, prodMat);
+      const ringRadius = 3.0;
       const angle = (idx / Math.max(products.length, 1)) * Math.PI * 2;
       satellite.position.set(
         ringRadius * Math.cos(angle),
