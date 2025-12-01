@@ -360,114 +360,255 @@ async def admin_clients_delete(request: web.Request) -> web.Response:
 
 
 async def admin_clients_import_promo(request: web.Request) -> web.Response:
-    reader = await request.multipart()
-    file_part = None
-    async for part in reader:
-        if part.name == "file":
-            file_part = part
-            break
-    if not file_part:
-        return web.json_response({"status": "ko", "error": "missing_file"}, status=400)
+    """
+    Importa anagrafiche aderenti alla promo da file Excel (preferibilmente .xlsx)
+    Formato colonne SENZA intestazione:
+      0: tipo (es. 'azienda' / 'privato')
+      1: ragione sociale / nome
+      2: P.IVA
+      3: SDI / PEC
+      4: regime fiscale
+      5: indirizzo completo
+      6: email
+      7: telefono
+      8: come ci hai conosciuti
+      9: metodo pagamento preferito
+     10: listino (distributore / rivenditore / rivenditore10)
+    """
+    from aiohttp import web
+    import io
+    import json
+    from openpyxl import load_workbook
 
-    file_data = await file_part.read()
+    logger = request.app["logger"]
+
+    # Leggi form-data
+    data = await request.post()
+    upfile = data.get("file")
+    if not upfile:
+        logger.warning("import_promo: nessun file ricevuto")
+        return web.json_response(
+            {
+                "status": "error",
+                "code": "missing_file",
+                "message": "Nessun file caricato. Seleziona un file Excel (.xlsx).",
+            },
+            status=400,
+        )
+
+    filename = getattr(upfile, "filename", "") or ""
+    logger.info(f"import_promo: ricevuto file '{filename}'")
+
+    # Leggi i byte del file
+    file_bytes = upfile.file.read()
+    if not file_bytes:
+        logger.warning("import_promo: file vuoto")
+        return web.json_response(
+            {
+                "status": "error",
+                "code": "empty_file",
+                "message": "Il file caricato è vuoto.",
+            },
+            status=400,
+        )
+
+    # Proviamo a caricare come XLSX con openpyxl
     try:
-        # prova a caricare il workbook .xlsx
-        wb = load_workbook(BytesIO(file_data), data_only=True)
-    except Exception as e:
-        logger.exception("Errore load_workbook per import_promo")
+        wb = load_workbook(io.BytesIO(file_bytes), data_only=True)
+    except Exception as exc:
+        logger.exception(f"import_promo: errore load_workbook: {exc}")
         return web.json_response(
-            {"status": "error", "error": "invalid_workbook"},
+            {
+                "status": "error",
+                "code": "invalid_workbook",
+                "message": "Il file non è un Excel valido. Salvalo come .xlsx e riprova.",
+            },
             status=400,
         )
 
-    # scegli un foglio valido:
-    sheet = wb.active
+    # Seleziona il primo foglio disponibile
+    sheet = None
+    try:
+        sheet = wb.active or (wb.worksheets[0] if wb.worksheets else None)
+    except Exception as exc:
+        logger.exception(f"import_promo: errore selezione sheet: {exc}")
+        sheet = None
+
     if sheet is None:
-        # se per qualche motivo non c'è active, usa il primo nome disponibile
-        sheet_names = list(wb.sheetnames or [])
-        if not sheet_names:
-            return web.json_response(
-                {"status": "error", "error": "no_worksheets"},
-                status=400,
-            )
-        sheet = wb[sheet_names[0]]
-
-    # estrai le righe, ignorando quelle completamente vuote
-    raw_rows = list(sheet.iter_rows(values_only=True))
-    rows = []
-    for row in raw_rows:
-        if not row:
-            continue
-        # tutte celle vuote?
-        if all((cell is None or (isinstance(cell, str) and not cell.strip())) for cell in row):
-            continue
-        rows.append(row)
-
-    if not rows:
+        logger.warning("import_promo: nessun foglio di lavoro trovato nel file")
         return web.json_response(
-            {"status": "error", "error": "empty_sheet"},
+            {
+                "status": "error",
+                "code": "no_worksheet",
+                "message": "Il file Excel non contiene fogli di lavoro validi.",
+            },
             status=400,
         )
+
+    # Leggi tutte le righe del foglio
+    try:
+        raw_rows = list(sheet.iter_rows(values_only=True))
+    except Exception as exc:
+        logger.exception(f"import_promo: errore iter_rows: {exc}")
+        return web.json_response(
+            {
+                "status": "error",
+                "code": "read_error",
+                "message": "Impossibile leggere le righe dal file Excel.",
+            },
+            status=400,
+        )
+
+    total_rows = len(raw_rows)
+    # Consideriamo valida qualsiasi riga che abbia almeno una cella non None
+    rows = [tuple(row) for row in raw_rows if any(cell is not None for cell in row)]
+    valid_rows = len(rows)
+
+    logger.info(
+        f"import_promo: righe totali nel foglio={total_rows}, righe non vuote={valid_rows}"
+    )
+
+    # Se proprio non c'è niente, restituiamo OK ma 0 importati
+    if valid_rows == 0:
+        logger.warning("import_promo: nessuna riga valida trovata nel file")
+        return web.json_response(
+            {
+                "status": "ok",
+                "imported": 0,
+                "updated": 0,
+                "message": "File letto correttamente ma nessuna riga dati valida trovata.",
+            },
+            status=200,
+        )
+
+    # Funzione helper locale per normalizzare stringhe
+    def _s(v):
+        if v is None:
+            return ""
+        return str(v).strip()
 
     imported = 0
     updated = 0
-    for raw in rows:
-        if not raw or all(v is None for v in raw):
+
+    db = request.app["db"]  # usa l'handle DB già presente nell'app
+
+    # Logghiamo le prime 3 righe per debug
+    for i, r in enumerate(rows[:3]):
+        logger.info(f"import_promo: anteprima riga {i+1}: {r}")
+
+    # LOOP di import: inserisci/aggiorna in base a email o P.IVA
+    for row in rows:
+        # Garantiamo almeno 11 colonne (padding con None)
+        cols = list(row) + [None] * (11 - len(row))
+        tipo, rag_soc, piva, sdi, regime, indirizzo, email, telefono, source, pay_pref, listino = cols[:11]
+
+        tipo = _s(tipo)
+        rag_soc = _s(rag_soc)
+        piva = _s(piva)
+        sdi = _s(sdi)
+        regime = _s(regime)
+        indirizzo = _s(indirizzo)
+        email = _s(email)
+        telefono = _s(telefono)
+        source = _s(source)
+        pay_pref = _s(pay_pref)
+        listino = _s(listino) or "rivenditore10"
+
+        # Salta righe completamente inutili (nessun nome e nessuna email e nessuna P.IVA)
+        if not rag_soc and not email and not piva:
             continue
-        (
-            tipo,
-            ragione_sociale,
-            piva,
-            sdi_pec,
-            regime_fiscale,
-            indirizzo,
-            email,
-            telefono,
-            source,
-            pagamento_preferito,
-            listino,
-        ) = (list(raw) + [None] * 11)[:11]
 
-        existing = find_client_by_email_or_piva(email, piva)
-        note_parts = []
-        if source:
-            note_parts.append(f"Source: {source}")
-        if pagamento_preferito:
-            note_parts.append(f"Pagamento: {pagamento_preferito}")
-        if regime_fiscale:
-            note_parts.append(f"Regime: {regime_fiscale}")
-        if indirizzo:
-            note_parts.append(f"Indirizzo: {indirizzo}")
-        if sdi_pec:
-            note_parts.append(f"SDI/PEC: {sdi_pec}")
+        # Determina chiave di matching (email preferita, altrimenti P.IVA)
+        key_email = email.lower() if email else None
+        key_piva = piva if piva else None
 
-        note_value = "; ".join([p for p in note_parts if p])
-        if existing and existing.get("note"):
-            note_value = note_value + ("; " if note_value else "") + str(existing.get("note"))
+        # Cerca cliente esistente
+        existing = None
+        if key_email:
+            existing = db.fetch_one(
+                "SELECT * FROM clients WHERE LOWER(email) = LOWER(?)",
+                (key_email,),
+            )
+        if not existing and key_piva:
+            existing = db.fetch_one(
+                "SELECT * FROM clients WHERE piva = ?",
+                (key_piva,),
+            )
 
-        payload: dict[str, Any] = {
-            "id": existing.get("id") if existing else None,
-            "ragione_sociale": ragione_sociale,
-            "piva": piva,
-            "email": email,
-            "telefono": telefono,
-            "listino": listino or (existing.get("listino") if existing else None),
-            "stato": existing.get("stato") if existing else "attivo",
-            "note": note_value,
-            "promo_enabled": 1,
-            "promo_points": existing.get("promo_points") if existing else 0,
-            "promo_ticket_code": existing.get("promo_ticket_code")
-            if existing
-            else f"XMAS-{uuid.uuid4().hex[:8].upper()}",
-            "promo_last_update": existing.get("promo_last_update") or now_iso(),
-        }
-        save_client(payload)
         if existing:
+            # UPDATE
+            db.execute(
+                """
+                UPDATE clients
+                   SET tipo = COALESCE(?, tipo),
+                       ragione_sociale = COALESCE(?, ragione_sociale),
+                       piva = COALESCE(?, piva),
+                       sdi = COALESCE(?, sdi),
+                       regime_fiscale = COALESCE(?, regime_fiscale),
+                       indirizzo = COALESCE(?, indirizzo),
+                       email = COALESCE(?, email),
+                       telefono = COALESCE(?, telefono),
+                       source = COALESCE(?, source),
+                       payment_pref = COALESCE(?, payment_pref),
+                       listino = COALESCE(?, listino),
+                       promo_enabled = 1
+                 WHERE id = ?
+                """,
+                (
+                    tipo or None,
+                    rag_soc or None,
+                    piva or None,
+                    sdi or None,
+                    regime or None,
+                    indirizzo or None,
+                    email or None,
+                    telefono or None,
+                    source or None,
+                    pay_pref or None,
+                    listino or None,
+                    existing["id"],
+                ),
+            )
             updated += 1
         else:
+            # INSERT
+            db.execute(
+                """
+                INSERT INTO clients
+                    (tipo, ragione_sociale, piva, sdi, regime_fiscale,
+                     indirizzo, email, telefono, source, payment_pref,
+                     listino, promo_enabled, promo_points, promo_ticket_code)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, 0, NULL)
+                """,
+                (
+                    tipo or None,
+                    rag_soc or None,
+                    piva or None,
+                    sdi or None,
+                    regime or None,
+                    indirizzo or None,
+                    email or None,
+                    telefono or None,
+                    source or None,
+                    pay_pref or None,
+                    listino or None,
+                ),
+            )
             imported += 1
 
-    return web.json_response({"status": "ok", "imported": imported, "updated": updated})
+    db.commit()
+
+    logger.info(
+        f"import_promo: import concluso. Nuovi={imported}, aggiornati={updated}, righe_lette={valid_rows}"
+    )
+
+    return web.json_response(
+        {
+            "status": "ok",
+            "imported": imported,
+            "updated": updated,
+        }
+    )
 
 
 PROMO_POINTS = {
