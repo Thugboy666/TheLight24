@@ -262,6 +262,31 @@
       color: #000000;
       opacity: 0.9;
     }
+
+    /* Promo points sheet */
+    #promo-points-card {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      gap: 6px;
+      padding: 8px 4px 2px;
+    }
+    #promo-points-value {
+      font-size: 28px;
+      font-weight: 700;
+      color: #000000;
+    }
+    #promo-points-status {
+      font-size: 12px;
+      color: #0f172a;
+    }
+    #promo-points-inactive {
+      font-size: 12px;
+      text-align: center;
+      color: #0f172a;
+      padding: 8px 4px 0;
+    }
     .tag {
       border-radius: 999px;
       font-size: 9px;
@@ -717,6 +742,23 @@
       <div class="sheet-actions">
         <button class="btn secondary" id="btn-login-cancel">Annulla</button>
         <button class="btn" id="btn-login-submit">Entra</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: PROMO PUNTI -->
+  <div class="backdrop" id="sheet-promo-points">
+    <div class="sheet">
+      <h2>Promo Natale – Stato punti</h2>
+      <div id="promo-points-card">
+        <div id="promo-points-value">0 punti</div>
+        <div id="promo-points-status">Aggiorniamo il tuo saldo punti…</div>
+      </div>
+      <div id="promo-points-inactive" style="display:none;">
+        Non risulti attivo sulla Promo Natale. Contatta il tuo referente commerciale Ormanet per essere abilitato.
+      </div>
+      <div class="sheet-actions" style="justify-content:flex-end;">
+        <button class="btn secondary" id="btn-promo-points-close">Chiudi</button>
       </div>
     </div>
   </div>
@@ -1234,6 +1276,7 @@
 
   const sheetRegister = document.getElementById("sheet-register");
   const sheetLogin = document.getElementById("sheet-login");
+  const sheetPromoPoints = document.getElementById("sheet-promo-points");
   const sheetCart = document.getElementById("sheet-cart");
   const cartListEl = document.getElementById("cart-list");
   const cartTotalEl = document.getElementById("cart-total");
@@ -1322,6 +1365,12 @@
   const btnLlmSend = document.getElementById("btn-llm-send");
   const btnLlmClose = document.getElementById("btn-llm-close");
   const btnAdminClose = document.getElementById("btn-admin-close");
+  const btnPromoPointsClose = document.getElementById("btn-promo-points-close");
+
+  const promoPointsCard = document.getElementById("promo-points-card");
+  const promoPointsValue = document.getElementById("promo-points-value");
+  const promoPointsStatus = document.getElementById("promo-points-status");
+  const promoPointsInactive = document.getElementById("promo-points-inactive");
 
   let editingProduct = null;
   let editingClientId = null;
@@ -1334,6 +1383,9 @@
   document.getElementById("btn-login").addEventListener("click", () => showSheet(sheetLogin));
   document.getElementById("btn-login-cancel").addEventListener("click", () => hideSheet(sheetLogin));
   document.getElementById("btn-logout").addEventListener("click", logout);
+  if (btnPromoPointsClose) {
+    btnPromoPointsClose.addEventListener("click", () => hideSheet(sheetPromoPoints));
+  }
   btnCart.addEventListener("click", () => showSheet(sheetCart));
   if (btnAdmin) {
     btnAdmin.addEventListener("click", () => showSheet(sheetAdmin));
@@ -1607,6 +1659,24 @@
     return "Accumula punti: a 350 pt ottieni 1 premio, a 850 pt fino a 2 premi, al massimo punti ricevi il biglietto fortunato.";
   }
 
+  function buildPromoPointsStatus(points = 0, maxPoints = null, tier = null) {
+    const normalizedTier = (tier || "").toString().toLowerCase();
+    const reachedMax =
+      (typeof maxPoints === "number" && points >= maxPoints) ||
+      normalizedTier === "max" ||
+      normalizedTier.includes("biglietto");
+    if (reachedMax) {
+      return "Hai diritto al biglietto fortunato: spedizione gratuita prime 2 settimane di gennaio, sconto massimo sul fatturato di gennaio, omaggi, e sconto minimo per 3 mesi sulla categoria che tratti.";
+    }
+    if (points >= 850) {
+      return "Hai diritto fino a 2 premi (soglia 850 punti).";
+    }
+    if (points >= 350) {
+      return "Hai diritto a 1 premio (soglia 350 punti).";
+    }
+    return "Nessun premio ancora. A 350 punti ottieni 1 premio, a 850 punti fino a 2 premi, con il massimo punti il biglietto fortunato.";
+  }
+
   function getPromoPrizesHtml() {
     return `
       <ul>
@@ -1658,11 +1728,13 @@
       const res = await fetch(`${BASE_URL}/admin/promo/summary?client_id=${clientId}`, {
         headers: buildAuthHeaders(),
       });
-      if (!res.ok) return;
+      if (!res.ok) return null;
       const summary = await res.json();
       renderPromoSummary(summary);
+      return summary;
     } catch (e) {
       console.error("Errore fetchPromoSummary", e);
+      return null;
     }
   }
 
@@ -3008,73 +3080,53 @@
     if (entityOfferBox) entityOfferBox.style.display = "none";
   }
 
-  function showOffertaNataleCard() {
-    currentEntity = { id: "offerta-natale" };
-    currentEntityType = "promo";
+  function renderPromoPointsSheet(points, statusText) {
+    if (!promoPointsCard || !promoPointsValue || !promoPointsStatus || !promoPointsInactive) return;
+    promoPointsCard.style.display = "flex";
+    promoPointsInactive.style.display = "none";
+    const safePoints = Number.isFinite(points) ? points : 0;
+    const label = Number.isFinite(points) ? Number(points).toLocaleString("it-IT") : "0";
+    promoPointsValue.textContent = `${label} punti`;
+    promoPointsStatus.textContent = statusText;
+  }
 
-    entityCard.style.display = "flex";
-    if (entityImageWrapper) entityImageWrapper.style.display = "none";
+  function renderPromoPointsInactiveMessage(message) {
+    if (!promoPointsCard || !promoPointsInactive) return;
+    promoPointsCard.style.display = "none";
+    promoPointsInactive.style.display = "block";
+    promoPointsInactive.textContent = message;
+  }
 
-    entityTypeEl.textContent = "MACRO OFFERTA";
-    entityTitleEl.textContent = "Promo Natale – Biglietto regalo";
-    const promoStatus = isPromoActiveNow() ? "Promo attiva" : "Promo non attiva";
-    entityMetaEl.textContent = `${getPromoPeriodLabel()} • ${promoStatus}`;
-    entityRatingEl.textContent = "";
-    entityTagsEl.innerHTML = "";
-
-    const span = document.createElement("span");
-    span.className = "tag";
-    span.textContent = "Promo Natale 2025";
-    entityTagsEl.appendChild(span);
-
-    entityPriceEl.textContent = "";
-    entityQtyWrapper.style.display = "none";
-    entityAdminActions.style.display = currentUser.name === "GOD ADMIN" ? "flex" : "none";
-
-    if (entityOfferBox) {
-      entityOfferBox.style.display = "flex";
-      entityOfferTitle.textContent = "Simulatore risparmio Promo Natale";
-      if (discountSimRow) discountSimRow.style.display = "flex";
-      if (promoDiscountSimBtn) promoDiscountSimBtn.style.display = "inline-flex";
-      entityOfferGift.innerHTML =
-        `<p>Accumula punti con le azioni del Biglietto regalo e raggiungi le soglie: 350 pt → 1 premio, 850 pt → fino a 2 premi, massimo punti → biglietto fortunato.</p>${getPromoPrizesHtml()}`;
-      discountSimLabel.textContent =
-        "Inserisci il fatturato previsto/mensile per stimare lo sconto configurato per la Promo Natale.";
-      discountSimInput.value = "";
-      discountSimOutput.textContent = "";
-    }
-
-    if (promoDiscountSimBtn) {
-      promoDiscountSimBtn.onclick = computePromoNataleDiscount;
-    }
-    if (discountSimInput) {
-      discountSimInput.oninput = null;
-      discountSimInput.onchange = null;
-    }
-
+  async function showPromoPointsView() {
+    if (!sheetPromoPoints) return;
     const promoClient = getCurrentClientRecord();
     const isPromoClient = currentUser.logged && promoClient?.promo_enabled;
 
     if (!isPromoClient) {
-      if (entityPromoSummary) {
-        entityPromoSummary.innerHTML =
-          "<p>Per partecipare alla promo Natale devi essere cliente promo registrato. Contatta Ormanet o il tuo referente commerciale.</p>" +
-          getPromoPrizesHtml();
-      }
-      if (discountSimRow) discountSimRow.style.display = "none";
-      if (promoDiscountSimBtn) promoDiscountSimBtn.style.display = "none";
-      if (discountSimInput) discountSimInput.disabled = true;
-      discountSimOutput.textContent = "";
+      renderPromoPointsInactiveMessage(
+        "Non risulti attivo sulla Promo Natale. Contatta il tuo referente commerciale Ormanet per essere abilitato."
+      );
+      showSheet(sheetPromoPoints);
       return;
     }
 
-    if (discountSimInput) discountSimInput.disabled = false;
-    renderPromoCardSummary({
-      points: promoClient.promo_points || 0,
-      tier: promoClient.promo_ticket_code || promoClient.promo_ticket || "base",
-      max_points: promoClient.promo_max_points,
-    });
-    fetchPromoSummary(promoClient.id);
+    const basePoints = promoClient.promo_points || 0;
+    const baseMaxPoints = promoClient.promo_max_points;
+    const baseTier = promoClient.promo_ticket_code || promoClient.promo_ticket || null;
+    renderPromoPointsSheet(basePoints, buildPromoPointsStatus(basePoints, baseMaxPoints, baseTier));
+    showSheet(sheetPromoPoints);
+
+    const summary = await fetchPromoSummary(promoClient.id);
+    if (summary) {
+      const points = typeof summary.points === "number" ? summary.points : basePoints;
+      const maxPoints = typeof summary.max_points !== "undefined" ? summary.max_points : baseMaxPoints;
+      const tier = summary.tier || baseTier;
+      renderPromoPointsSheet(points || 0, buildPromoPointsStatus(points || 0, maxPoints, tier));
+    }
+  }
+
+  function showOffertaNataleCard() {
+    showPromoPointsView();
   }
 
   function findOfferTitle(offerId) {
@@ -3260,7 +3312,7 @@
     if (!obj) return;
 
     if (obj.type === "promo-natale") {
-      showOffertaNataleCard();
+      showPromoPointsView();
       return;
     }
 
@@ -3405,10 +3457,10 @@
   // Pulsante INDIETRO: chiude sheet aperti, reset se non c'è history
   btnBack.addEventListener("click", () => {
     const anySheetOpen = [
-      sheetRegister, sheetLogin, sheetCart, sheetProduct, sheetLlm
+      sheetRegister, sheetLogin, sheetCart, sheetProduct, sheetLlm, sheetPromoPoints
     ].some(el => el.style.display === "flex");
     if (anySheetOpen) {
-      [sheetRegister, sheetLogin, sheetCart, sheetProduct, sheetLlm]
+      [sheetRegister, sheetLogin, sheetCart, sheetProduct, sheetLlm, sheetPromoPoints]
         .forEach(el => el.style.display = "none");
       return;
     }
