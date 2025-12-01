@@ -310,6 +310,27 @@
       text-align: center;
       transform: translate(-50%, -50%);
       z-index: 30;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.15);
+    }
+
+    .floating-badge {
+      font-size: 9px;
+      padding: 1px 6px;
+      border-radius: 999px;
+      border: 1px solid transparent;
+    }
+    .floating-badge.active {
+      background: rgba(22,163,74,0.9);
+      color: #ffffff;
+      border-color: rgba(22,163,74,1);
+    }
+    .floating-badge.inactive {
+      background: rgba(148,163,184,0.9);
+      color: #ffffff;
+      border-color: rgba(148,163,184,1);
     }
 
     /* Modal / sheets */
@@ -1058,6 +1079,10 @@
     "storage": "/assets/textures/10.png",
     "consumabili-remanufactured": "/assets/textures/11.png",
     "consumabili_remanufactured": "/assets/textures/11.png",
+  };
+
+  const PROMO_TEXTURES = {
+    natale: "/assets/textures/offerta_natale.png"
   };
 
   const adminSettings = {
@@ -2241,21 +2266,38 @@
   scene.background = new THREE.Color(0xff7b00);
 
   const textureLoader = new THREE.TextureLoader();
+
+  function createIconSprite(texturePath, size = 1.5) {
+    const tex = textureLoader.load(texturePath);
+    const mat = new THREE.SpriteMaterial({ map: tex, transparent: true });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(size, size, 1);
+    return sprite;
+  }
   const snowflakesTexture = textureLoader.load("/assets/textures/snowflakes.png");
 
   const floatingTags = new Map();
   const snowflakes = [];
   let snowflakeGroup = null;
+  let nataleNode = null;
 
   function clearFloatingTags() {
     floatingTags.forEach((el) => el.remove());
     floatingTags.clear();
   }
 
-  function createFloatingTagForObject(mesh, text) {
+  function createFloatingTagForObject(mesh, text, opts = {}) {
     const el = document.createElement("div");
     el.className = "floating-tag";
-    el.textContent = text;
+    const label = document.createElement("span");
+    label.textContent = text;
+    el.appendChild(label);
+    if (opts.badge) {
+      const badge = document.createElement("span");
+      badge.className = "floating-badge" + (opts.badgeState ? ` ${opts.badgeState}` : "");
+      badge.textContent = opts.badge;
+      el.appendChild(badge);
+    }
     (appEl || document.body).appendChild(el);
     floatingTags.set(mesh, el);
     return el;
@@ -2288,6 +2330,56 @@
     }
 
     scene.add(snowflakeGroup);
+  }
+
+  function addNataleIcon() {
+    if (!nataleNode) {
+      const size = 1.8;
+      const icon = createIconSprite(PROMO_TEXTURES.natale, size);
+
+      const glowMap = textureLoader.load(
+        PROMO_TEXTURES.natale,
+        undefined,
+        undefined,
+        (err) => console.error("Errore texture promo natale", err)
+      );
+      const glowMat = new THREE.SpriteMaterial({
+        map: glowMap,
+        transparent: true,
+        color: 0xfff2c2,
+        opacity: 0.45,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false
+      });
+      const glow = new THREE.Sprite(glowMat);
+      glow.scale.set(size * 2.4, size * 2.4, 1);
+
+      const group = new THREE.Group();
+      group.add(glow);
+      group.add(icon);
+      group.position.set(-3, 3.5, -4);
+      group.userData.persistent = true;
+      group.userData._raised = true;
+
+      scene.add(group);
+
+      nataleNode = { mesh: group, glow, icon, baseScale: size * 2.4 };
+    }
+
+    if (nataleNode && !objects.some((o) => o.type === "promo-natale")) {
+      objects.push({
+        type: "promo-natale",
+        ref: { id: "offerta-natale" },
+        mesh: nataleNode.mesh,
+      });
+    }
+
+    if (nataleNode && !floatingTags.has(nataleNode.mesh)) {
+      createFloatingTagForObject(nataleNode.mesh, "Offerta Natale", {
+        badge: "Promo",
+        badgeState: "active",
+      });
+    }
   }
 
   function adjustObjectPosition() {
@@ -2393,29 +2485,12 @@
 
   function updateCubeTextures() {
     objects.forEach((object) => {
-      if (!object.mesh || object.mesh.type !== "Mesh") return;
-      if (object.type === "category" && object.ref?.discountActive) return;
+      if (!object.mesh) return;
+      if (object.mesh.type === "Sprite") return;
+      if (object.mesh.type !== "Mesh") return;
 
       let texturePath = null;
       switch (object.type) {
-        case "category":
-          texturePath = getTexturePathForCategory(object.ref);
-          if (texturePath) {
-            applyTextureToCube(object.mesh, texturePath, "/assets/textures/category_placeholder.png");
-          }
-          return;
-        case "subcategory":
-          texturePath = getTexturePathForCategory(object.ref);
-          if (texturePath) {
-            applyTextureToCube(object.mesh, texturePath, "/assets/textures/category_placeholder.png");
-          }
-          return;
-        case "planet":
-          texturePath = getTexturePathForCategory(object.ref?.category);
-          if (texturePath) {
-            applyTextureToCube(object.mesh, texturePath, "/assets/textures/category_placeholder.png");
-          }
-          return;
         case "system":
         case "system-center":
           texturePath =
@@ -2467,37 +2542,17 @@
   function addSystems() {
     const systemsToRender = universe.systems.length ? [universe.systems[0]] : [];
     systemsToRender.forEach((sys, idx) => {
-      const size = 1.4;
-      const geo = new THREE.BoxGeometry(size, size, size);
+      const texPath = sys.texture || SYSTEM_TEXTURES[sys.id] || "/assets/textures/category_placeholder.png";
 
-      const texPath = sys.texture || SYSTEM_TEXTURES[sys.id] || null;
-
-      let map = null;
-      if (texPath) {
-        map = textureLoader.load(
-          texPath,
-          undefined,
-          undefined,
-          (err) => {
-            console.error("Errore texture sistema", sys.id, texPath, err);
-          }
-        );
-      } else {
-        console.warn("Texture sistema mancante", sys.id);
-      }
-
-      const mat = new THREE.MeshStandardMaterial({
-        color: 0xffffff,
-        map: map || null,
-        metalness: 0.3,
-        roughness: 0.4
+      const sprite = createIconSprite(texPath, 2.2);
+      sprite.position.set(sys.position.x, sys.position.y + 1.4, sys.position.z);
+      scene.add(sprite);
+      createFloatingTagForObject(sprite, sys.name, {
+        badge: "Hub",
+        badgeState: "active",
       });
-      const box = new THREE.Mesh(geo, mat);
-      box.position.set(sys.position.x, sys.position.y + 0.5, sys.position.z);
-      scene.add(box);
-      createFloatingTagForObject(box, sys.name);
 
-      objects.push({ type: "system", ref: sys, mesh: box });
+      objects.push({ type: "system", ref: sys, mesh: sprite });
     });
   }
 
@@ -2508,114 +2563,58 @@
     targetRotX = 0;
     targetRotY = 0;
 
-    const centerGeo = new THREE.BoxGeometry(1.6, 1.6, 1.6);
-    const centerTexPath = system.texture || SYSTEM_TEXTURES[system.id] || null;
-
-    let centerMap = null;
-    if (centerTexPath) {
-      centerMap = textureLoader.load(
-        centerTexPath,
-        undefined,
-        undefined,
-        (err) => {
-          console.error("Errore texture sistema", system.id, centerTexPath, err);
-        }
-      );
-    }
-    const centerMat = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      map: centerMap || null,
-      metalness: 0.3,
-      roughness: 0.4
-    });
-    const center = new THREE.Mesh(centerGeo, centerMat);
-    center.position.set(0, 1.5, 0);
+    const centerTexPath =
+      system.texture || SYSTEM_TEXTURES[system.id] || "/assets/textures/category_placeholder.png";
+    const center = createIconSprite(centerTexPath, 2.4);
+    center.position.set(0, 1.8, 0);
     scene.add(center);
     objects.push({ type: "system-center", ref: system, mesh: center });
-    createFloatingTagForObject(center, system.name);
+    createFloatingTagForObject(center, system.name, {
+      badge: "B2B",
+      badgeState: "active",
+    });
 
     const radiusBase = 3.2;
-    const catGeo = new THREE.BoxGeometry(1.0, 1.0, 1.0);
 
     system.categories.forEach((cat, idx) => {
       const orbitRadius = radiusBase + idx * 1.3;
 
-      const catTexPath = cat.texture || CATEGORY_TEXTURES[cat.id] || null;
+      const catTexPath = getTexturePathForCategory(cat) || "/assets/textures/category_placeholder.png";
 
-      let catMap = null;
-      if (catTexPath) {
-        catMap = textureLoader.load(
-          catTexPath,
-          undefined,
-          undefined,
-          (err) => {
-            console.error("Errore texture categoria", cat.id, catTexPath, err);
-          }
-        );
-      } else {
-        console.warn("Texture categoria mancante", cat.id);
-      }
-
-      const catMat = new THREE.MeshStandardMaterial({
-        color: 0xffffff,
-        map: catMap || null,
-        metalness: 0.3,
-        roughness: 0.4
-      });
-
-      const box = new THREE.Mesh(catGeo, catMat);
+      const icon = createIconSprite(catTexPath, 1.6);
       const angle = (idx / system.categories.length) * Math.PI * 2;
-      box.position.set(
+      icon.position.set(
         orbitRadius * Math.cos(angle),
-        1.2,
+        1.4,
         orbitRadius * Math.sin(angle)
       );
-      scene.add(box);
+      scene.add(icon);
 
-      highlightDiscountCategory(cat, box);
-
-      objects.push({ type: "category", ref: cat, mesh: box, orbitRadius, angle });
-      const tagText = cat.discountActive && cat.discountDate
-        ? `${cat.name} • ${cat.discountDate}`
-        : cat.name;
-      createFloatingTagForObject(box, tagText);
+      objects.push({ type: "category", ref: cat, mesh: icon, orbitRadius, angle });
+      createFloatingTagForObject(icon, cat.name, {
+        badge: cat.discountActive ? "Sconto attivo" : "Sconto non attivo",
+        badgeState: cat.discountActive ? "active" : "inactive",
+      });
 
       // Satelliti per sottocategorie
-      const satGeo = new THREE.BoxGeometry(0.5, 0.5, 0.5);
       cat.subcategories?.forEach((sub, jdx) => {
-        const subTexPath = sub.texture || CATEGORY_TEXTURES[sub.id] || null;
+        const subTexPath =
+          sub.texture || getTexturePathForCategory(sub) || "/assets/textures/category_placeholder.png";
 
-        let subMap = null;
-        if (subTexPath) {
-          subMap = textureLoader.load(
-            subTexPath,
-            undefined,
-            undefined,
-            (err) => {
-              console.error("Errore texture sottocategoria", sub.id, subTexPath, err);
-            }
-          );
-        }
-
-        const satMat = new THREE.MeshStandardMaterial({
-          color: 0xffffff,
-          map: subMap || null,
-          metalness: 0.3,
-          roughness: 0.5
-        });
-
-        const sat = new THREE.Mesh(satGeo, satMat);
+        const sat = createIconSprite(subTexPath, 0.9);
         const satAngle = angle + (jdx + 1) * 0.7;
         const satRadius = orbitRadius * 1.18;
         sat.position.set(
           satRadius * Math.cos(satAngle),
-          1.2,
+          1.4,
           satRadius * Math.sin(satAngle)
         );
         scene.add(sat);
         objects.push({ type: "subcategory", ref: sub, mesh: sat });
+        createFloatingTagForObject(sat, sub.name || "Bundle");
       });
     });
+    addNataleIcon();
     adjustObjectPosition();
     updateCubeTextures();
   }
@@ -2627,67 +2626,41 @@
     targetRotX = 0;
     targetRotY = 0;
 
-    const planetGeo = new THREE.BoxGeometry(2.0, 2.0, 2.0);
-    const planetTexPath = category.texture || CATEGORY_TEXTURES[category.id] || null;
+    const planetTexPath =
+      category.texture || getTexturePathForCategory(category) || "/assets/textures/category_placeholder.png";
 
-    let planetMap = null;
-    if (planetTexPath) {
-      planetMap = textureLoader.load(
-        planetTexPath,
-        undefined,
-        undefined,
-        (err) => {
-          console.error("Errore texture categoria", category.id, planetTexPath, err);
-        }
-      );
-    } else {
-      console.warn("Texture pianeta mancante", category.id);
-    }
-    const planetMat = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      map: planetMap || null,
-      metalness: 0.3,
-      roughness: 0.4
-    });
-    const planet = new THREE.Mesh(planetGeo, planetMat);
-    planet.position.set(0, 1.5, 0);
+    const planet = createIconSprite(planetTexPath, 2.6);
+    planet.position.set(0, 1.8, 0);
     scene.add(planet);
     objects.push({ type: "planet", ref: { category, subcategory }, mesh: planet });
+    createFloatingTagForObject(planet, category.name, {
+      badge: "Dettaglio",
+      badgeState: "active",
+    });
 
     const products = subcategory.products || [];
-    const prodGeo = new THREE.BoxGeometry(0.7, 0.7, 0.7);
+    const ringRadius = 3.0;
 
     products.forEach((prod, idx) => {
-      let prodMap = null;
-      if (prod?.sku) {
-        prodMap = textureLoader.load(
-          `/assets/textures/products/${prod.sku}.png`,
-          undefined,
-          undefined,
-          (err) => {
-            console.error("Errore texture prodotto", prod.sku, err);
-          }
-        );
-      }
+      let texPath =
+        prod.image_thumb ||
+        prod.image_hd ||
+        (prod.sku ? `/assets/textures/products/${prod.sku}.png` : null) ||
+        "/assets/textures/product_placeholder.png";
 
-      const prodMat = new THREE.MeshStandardMaterial({
-        color: 0xffffff,
-        map: prodMap || null,
-        metalness: 0.3,
-        roughness: 0.5
-      });
-
-      const satellite = new THREE.Mesh(prodGeo, prodMat);
-      const ringRadius = 3.0;
+      const sprite = createIconSprite(texPath, 1.1);
       const angle = (idx / Math.max(products.length, 1)) * Math.PI * 2;
-      satellite.position.set(
+      sprite.position.set(
         ringRadius * Math.cos(angle),
-        1.1,
+        1.4,
         ringRadius * Math.sin(angle)
       );
-      scene.add(satellite);
-      objects.push({ type: "product", ref: prod, mesh: satellite });
+      scene.add(sprite);
+      objects.push({ type: "product", ref: prod, mesh: sprite });
+
+      createFloatingTagForObject(sprite, prod.name || prod.sku || "Prodotto");
     });
+    addNataleIcon();
     adjustObjectPosition();
     updateCubeTextures();
   }
@@ -2714,6 +2687,7 @@
   addSnowflakes();
   adjustObjectPosition();
   updateCubeTextures();
+  addNataleIcon();
 
   // CAMERA & CONTROLS
   let isDragging = false;
@@ -2735,6 +2709,7 @@
     clearDynamicObjects();
     addGalaxy();
     addSystems();
+    addNataleIcon();
     updateCubeTextures();
     camera.position.set(0, 3.5, 14);
     zoomLevel = "GALASSIA";
@@ -2886,6 +2861,41 @@
     if (entityOfferBox) entityOfferBox.style.display = "none";
   }
 
+  function showOffertaNataleCard() {
+    currentEntity = { id: "offerta-natale" };
+    currentEntityType = "promo";
+
+    entityCard.style.display = "flex";
+    if (entityImageWrapper) entityImageWrapper.style.display = "none";
+
+    entityTypeEl.textContent = "MACRO OFFERTA";
+    entityTitleEl.textContent = "Offerta Natale Ormanet";
+    entityMetaEl.textContent =
+      "Clienti aderenti ottengono punti promo, biglietto regalo e condizioni dedicate.";
+    entityRatingEl.textContent = "";
+    entityTagsEl.innerHTML = "";
+
+    const span = document.createElement("span");
+    span.className = "tag";
+    span.textContent = "Promo Natale 2025";
+    entityTagsEl.appendChild(span);
+
+    entityPriceEl.textContent = "";
+    entityQtyWrapper.style.display = "none";
+    entityAdminActions.style.display = currentUser.name === "GOD ADMIN" ? "flex" : "none";
+
+    if (entityOfferBox) {
+      entityOfferBox.style.display = "flex";
+      entityOfferTitle.textContent = "Promo Natale – Box regali & punti";
+      entityOfferGift.textContent =
+        "Se sei cliente aderente alla promo, ogni ordine nelle categorie coinvolte accumula punti e sblocca premi fisici.";
+      discountSimLabel.textContent =
+        "Inserisci l’importo ordine per capire quanto ti conviene sfruttare le soglie sconto configurate.";
+      discountSimInput.value = "";
+      discountSimOutput.textContent = "";
+    }
+  }
+
   function findOfferTitle(offerId) {
     const offer = offersUniverse.find((o) => o.id === offerId);
     return offer?.title || offer?.name || offerId;
@@ -3021,6 +3031,11 @@
     const obj = objects.find(o => o.mesh === hit || o.mesh === hit.parent);
     if (!obj) return;
 
+    if (obj.type === "promo-natale") {
+      showOffertaNataleCard();
+      return;
+    }
+
     if (obj.type === "system") {
       enterSystem(obj.ref);
       return;
@@ -3139,6 +3154,14 @@
       snowflake.position.y -= snowflake.userData.velocity || 0.01;
       if (snowflake.position.y < -20) snowflake.position.y = 20;
     });
+
+    if (nataleNode && nataleNode.glow) {
+      const t = performance.now() * 0.001;
+      const pulse = 1 + Math.sin(t * 2) * 0.15;
+      const base = nataleNode.baseScale || 1.8 * 2.4;
+      const scale = base * pulse;
+      nataleNode.glow.scale.set(scale, scale, 1);
+    }
 
     renderer.render(scene, camera);
     updateFloatingTags();
