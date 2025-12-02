@@ -98,21 +98,49 @@ def load_xlsx_rows(path: Path) -> Iterable[Dict[str, str]]:
 
 
 def normalize_row(raw: Dict[str, str]) -> Optional[Dict[str, str]]:
-    # Mappatura campi con fallback su nomi alternativi
     def pick(*keys: str) -> str:
         for key in keys:
             if key in raw and raw.get(key) not in (None, ""):
                 return str(raw.get(key)).strip()
         return ""
 
-    document_number = pick("numero documento", "documento", "doc", "document_number")
+    document_number = pick(
+        "numero documento",
+        "n.doc.",
+        "n.doc",
+        "documento",
+        "doc",
+        "document_number",
+    )
+
     status = pick("stato", "status")
+
     cause = pick("causale", "cause")
-    customer_name = pick("ragione sociale", "cliente", "customer_name")
-    customer_email = pick("email", "email cliente", "customer_email")
-    order_date = parse_date(pick("data ordine", "data", "order_date"))
-    total_amount = safe_number(pick("totale", "importo", "total_amount"))
-    external_id = pick("id gestionale", "external_id")
+
+    customer_name = pick(
+        "ragione sociale",
+        "intestatario",
+        "cliente",
+        "customer_name",
+    )
+
+    customer_email = pick(
+        "email",
+        "email cliente",
+        "email_cliente",
+        "customer_email",
+    )
+
+    order_date = parse_date(
+        pick("data ordine", "data", "order_date")
+    )
+
+    total_amount = safe_number(
+        pick("tot.doc.", "tot doc", "totale", "importo", "total_amount")
+    )
+
+    external_id = pick("id gestionale", "external_id") or document_number
+
     notes = pick("note", "notes")
 
     if not document_number or not customer_email:
