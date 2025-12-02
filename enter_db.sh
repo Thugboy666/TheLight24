@@ -1,33 +1,32 @@
 #!/data/data/com.termux/files/usr/bin/bash
 
-# Path base al progetto
 PROJECT_DIR="$HOME/TheLight24"
-DB_PATH="$PROJECT_DIR/data/db.sqlite3"
-
-# Porta per sqlite-web
+DB_PATH="$PROJECT_DIR/data/db/thelight_universe.db"
 PORT=8082
+PID_FILE="$PROJECT_DIR/.db_pid"
 
-# Controlla se sqlite_web è installato
+# Controlla sqlite_web
 if ! command -v sqlite_web >/dev/null 2>&1; then
-    echo "sqlite_web non è installato. Installo ora..."
+    echo "[INFO] sqlite_web non trovato, lo installo..."
     pip install sqlite-web
 fi
 
-# Killa eventuali istanze precedenti sulla stessa porta
-PID_OLD=$(lsof -t -i:$PORT)
-if [ ! -z "$PID_OLD" ]; then
-    echo "Killo vecchia istanza sqlite-web (PID $PID_OLD)..."
-    kill -9 $PID_OLD
+# Kill vecchia istanza sulla stessa porta
+OLD_PID=$(lsof -t -i:$PORT)
+if [ ! -z "$OLD_PID" ]; then
+    echo "[INFO] Trovato sqlite_web già attivo (PID $OLD_PID), lo chiudo..."
+    kill -9 $OLD_PID
 fi
 
-# Avvia sqlite-web
-echo "Avvio pannello DB su http://127.0.0.1:$PORT ..."
+# Avvia sqlite_web
+echo "[INFO] Avvio pannello DB su http://127.0.0.1:$PORT"
 sqlite_web "$DB_PATH" --host 0.0.0.0 --port $PORT &
-PID_NEW=$!
-echo $PID_NEW > "$PROJECT_DIR/.db_pid"
+NEW_PID=$!
+echo $NEW_PID > "$PID_FILE"
+
 sleep 1
 
-# Apri browser
+# Apri browser del telefono
 termux-open-url "http://127.0.0.1:$PORT"
 
-echo "DB attivo. PID: $PID_NEW"
+echo "[OK] sqlite-web avviato (PID $NEW_PID). Browser aperto."
