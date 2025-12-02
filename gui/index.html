@@ -608,7 +608,6 @@
       <div id="entity-tags"></div>
       <div id="entity-offer-box">
         <div id="entity-offer-title" style="font-weight:600;"></div>
-        <div id="entity-offer-gift"></div>
         <div id="discount-sim-row">
           <label id="discount-sim-label"></label>
           <input id="discount-sim-input" type="number" min="0" step="1" placeholder="Inserisci importo" />
@@ -1217,62 +1216,62 @@
           id: "batterie",
           name: "Batterie",
           tags: ["energia", "ricarica"],
-          subcategories: [{ id: "batterie-gift", name: "Gift energia" }]
+          subcategories: []
         },
         {
           id: "cancelleria",
           name: "Cancelleria",
           tags: ["ufficio"],
-          subcategories: [{ id: "cancelleria-gift", name: "Gift cancelleria" }]
+          subcategories: []
         },
         {
           id: "carta-stampa",
           name: "Carta per stampa",
           tags: ["risme", "ufficio"],
-          subcategories: [{ id: "carta-gift", name: "Gift carta" }]
+          subcategories: []
         },
         {
           id: "consumabili-originali",
           name: "Consumabili originali",
           tags: ["toner", "inkjet", "originali"],
           offerId: "offerta-consumabili-originali",
-          subcategories: [{ id: "consumabili-gift", name: "Gift consumabili" }]
+          subcategories: []
         },
         {
           id: "elettronica",
           name: "Elettronica",
           tags: ["device", "pc", "monitor"],
-          subcategories: [{ id: "elettronica-gift", name: "Gift tech" }]
+          subcategories: []
         },
         {
           id: "eliminacode",
           name: "Eliminacode",
           tags: ["gestione flussi"],
-          subcategories: [{ id: "eliminacode-gift", name: "Gift front-office" }]
+          subcategories: []
         },
         {
           id: "rotoli-termici",
           name: "Rotoli termici",
           tags: ["pos", "ricevute"],
-          subcategories: [{ id: "rotoli-gift", name: "Gift rotoli" }]
+          subcategories: []
         },
         {
           id: "stampanti",
           name: "Stampanti",
           tags: ["laser", "inkjet"],
-          subcategories: [{ id: "stampanti-gift", name: "Gift stampanti" }]
+          subcategories: []
         },
         {
           id: "storage",
           name: "Storage",
           tags: ["ssd", "hdd", "backup"],
-          subcategories: [{ id: "storage-gift", name: "Gift storage" }]
+          subcategories: []
         },
         {
           id: "consumabili-remanufactured",
           name: "Remanufactured",
           tags: ["green", "remanufactured"],
-          subcategories: [{ id: "reman-gift", name: "Gift reman" }]
+          subcategories: []
         }
       ]
     }
@@ -1316,7 +1315,6 @@
   const entityTagsEl = document.getElementById("entity-tags");
   const entityOfferBox = document.getElementById("entity-offer-box");
   const entityOfferTitle = document.getElementById("entity-offer-title");
-  const entityOfferGift = document.getElementById("entity-offer-gift");
   const entityPromoSummary = document.getElementById("entity-promo-summary");
   const discountSimLabel = document.getElementById("discount-sim-label");
   const discountSimInput = document.getElementById("discount-sim-input");
