@@ -115,6 +115,26 @@
       font-size: 9px;
       opacity: 0.8;
     }
+    .daily-offer-box {
+      padding-bottom: 1rem;
+      box-sizing: border-box;
+    }
+    .daily-offer-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem;
+      justify-content: center;
+      align-items: center;
+      margin-top: 0.75rem;
+    }
+    .daily-offer-actions .btn,
+    .daily-offer-actions button,
+    .daily-offer-actions a {
+      flex: 1 1 30%;
+      max-width: 32%;
+      text-align: center;
+      white-space: nowrap;
+    }
     .pill {
       font-size: 10px;
       padding: 4px 8px;
@@ -173,6 +193,12 @@
         font-size: 10px;
       }
       #tier-pill { display: none; }
+      .daily-offer-actions .btn,
+      .daily-offer-actions button,
+      .daily-offer-actions a {
+        flex: 1 1 100%;
+        max-width: 100%;
+      }
     }
 
     /* Top-right controls (Indietro + Chat AI) */
@@ -715,7 +741,7 @@
     <div id="location-path">Posizione: /</div>
     <div id="hint">Pinch/zoom o tap per esplorare. Tocca sistemi, stelle, pianeti e satelliti per scendere di livello.</div>
 
-    <div id="daily-coupon-box" class="coupon-box daily-offer-box" style="display:none; margin-top:8px; padding:10px; border-radius:10px; border:1px solid #f97316; background:rgba(248,250,252,0.98); box-shadow:0 0 0 1px rgba(15,23,42,0.04); position:relative;">
+    <div id="daily-coupon-box" class="coupon-box daily-offer-box" style="display:none; margin-top:8px; padding:10px 10px 16px; border-radius:10px; border:1px solid #f97316; background:rgba(248,250,252,0.98); box-shadow:0 0 0 1px rgba(15,23,42,0.04); position:relative;">
       <button id="daily-coupon-close"
         type="button"
         style="position:absolute; top:4px; right:6px; border:none; background:transparent; cursor:pointer; font-size:12px; line-height:1; color:rgba(15,23,42,0.55);">
@@ -759,25 +785,22 @@
         </ol>
       </div>
 
-      <div style="display:flex;flex-wrap:wrap;gap:8px;margin-top:8px;">
+      <div class="daily-offer-actions">
         <button id="btn-add-to-cart"
                 class="btn"
-                type="button"
-                style="flex:1;min-width:0;">
+                type="button">
           <strong>1</strong>&nbsp; Aggiungi articolo al carrello
         </button>
 
         <button id="btn-copy-coupon"
                 class="btn"
-                type="button"
-                style="flex:1;min-width:0;">
+                type="button">
           <strong>2</strong>&nbsp; Copia coupon
         </button>
 
         <button id="btn-go-cart"
                 class="btn"
-                type="button"
-                style="flex:1;min-width:0;">
+                type="button">
           <strong>3</strong>&nbsp; Vai al tuo carrello
         </button>
       </div>
