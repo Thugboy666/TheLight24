@@ -3056,19 +3056,63 @@
   }
 
   function getUserPriceConfig() {
-    const tier = (
-      (currentUser && (currentUser.tier || currentUser.list_type || "")) || ""
-    ).toLowerCase();
+    const rawTier =
+      (currentUser && (currentUser.tier || currentUser.list_type || "")) || "";
+    const tier = rawTier.toLowerCase().trim();
+
+    // default: normal reseller
+    const defaultCfg = {
+      priceField: "price_rivenditore",
+      discountField: "discount_riv_percent",
+    };
+
     if (!tier) {
-      return { priceField: "price_rivenditore", discountField: "discount_riv_percent" };
+      return defaultCfg;
     }
-    if (tier.includes("dist")) {
-      return { priceField: "price_distributore", discountField: "discount_dist_percent" };
+
+    // heuristics for segments
+    const isRiv10 =
+      tier.includes("10") ||
+      tier.includes("+10") ||
+      tier.includes("riv 10") ||
+      tier.includes("riv+10");
+
+    const isDistributore =
+      tier.includes("dist") ||
+      tier.includes("distrib") ||
+      tier.includes("distributore") ||
+      tier.includes("b2b");
+
+    const isRiv =
+      tier.includes("riv") || tier.includes("rivenditore");
+
+    // Priority:
+    // 1) specific "+10" tier
+    // 2) explicit distributor / B2B
+    // 3) normal reseller
+    if (isRiv10) {
+      return {
+        priceField: "price_rivenditore10",
+        discountField: "discount_riv10_percent",
+      };
     }
-    if (tier.includes("10")) {
-      return { priceField: "price_rivenditore10", discountField: "discount_riv10_percent" };
+
+    if (isDistributore) {
+      return {
+        priceField: "price_distributore",
+        discountField: "discount_dist_percent",
+      };
     }
-    return { priceField: "price_rivenditore", discountField: "discount_riv_percent" };
+
+    if (isRiv) {
+      return {
+        priceField: "price_rivenditore",
+        discountField: "discount_riv_percent",
+      };
+    }
+
+    // fallback
+    return defaultCfg;
   }
 
   async function openDailyOfferForUser() {
@@ -3116,15 +3160,14 @@
         }
       }
 
-      if (cfg.discountField === "discount_dist_percent" && typeof data.discount_dist_percent === "number") {
-        discountPercent = data.discount_dist_percent;
-      } else if (cfg.discountField === "discount_riv_percent" && typeof data.discount_riv_percent === "number") {
-        discountPercent = data.discount_riv_percent;
-      } else if (
-        cfg.discountField === "discount_riv10_percent" &&
-        typeof data.discount_riv10_percent === "number"
-      ) {
-        discountPercent = data.discount_riv10_percent;
+      discountPercent = 0;
+      const rawDiscount = data[cfg.discountField];
+
+      if (typeof rawDiscount === "number") {
+        discountPercent = rawDiscount;
+      } else if (rawDiscount != null && rawDiscount !== "") {
+        const parsedDisc = Number(rawDiscount);
+        discountPercent = Number.isFinite(parsedDisc) ? parsedDisc : 0;
       }
 
       let finalPrice = null;
