@@ -5029,40 +5029,45 @@
   function setupInputAutoScroll() {
     if (!isMobileDevice()) return;
 
-    document.addEventListener(
-      "focusin",
-      (event) => {
-        const target = event.target;
-        if (!(target instanceof HTMLElement)) return;
+    function handleKeyboardOpen(event) {
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
 
-        // Applichiamo lo scroll a tutti i campi input/textarea/select,
-        // incluso il pannello admin.
-        const tag = target.tagName;
-        if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") return;
+      const tag = target.tagName;
+      if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") return;
 
-        const modal = target.closest(".sheet");
-        const scrollContainer = modal || document.scrollingElement || document.body;
+      // Se il campo è dentro uno sheet (login, register, ADMIN, ecc.)
+      const modal = target.closest(".sheet");
+      const scrollContainer = modal || document.scrollingElement || document.body;
 
-        setTimeout(() => {
-          try {
-            target.scrollIntoView({
-              behavior: "smooth",
-              block: "center",
-            });
-          } catch (e) {
-            const rect = target.getBoundingClientRect();
-            const baseScroll = modal ? modal.scrollTop : window.scrollY;
-            const offset = rect.top + baseScroll - window.innerHeight / 3;
-            if (scrollContainer && typeof scrollContainer.scrollTo === "function") {
-              scrollContainer.scrollTo({ top: offset, behavior: "smooth" });
-            } else {
-              window.scrollTo(0, offset);
-            }
+      setTimeout(() => {
+        try {
+          // Centra il campo nella viewport (funziona anche per il pannello admin)
+          target.scrollIntoView({
+            behavior: "smooth",
+            block: "center",
+          });
+        } catch (e) {
+          const rect = target.getBoundingClientRect();
+          const baseScroll = modal ? modal.scrollTop : window.scrollY;
+          const offset = rect.top + baseScroll - window.innerHeight / 3;
+
+          if (scrollContainer && typeof scrollContainer.scrollTo === "function") {
+            scrollContainer.scrollTo({ top: offset, behavior: "smooth" });
+          } else {
+            window.scrollTo(0, offset);
           }
-        }, 150);
-      },
-      true
-    );
+        }
+      }, 150);
+    }
+
+    function handleKeyboardClose(event) {
+      // Per ora non serve ripristinare nulla, lasciamo vuoto.
+      return;
+    }
+
+    document.addEventListener("focusin", handleKeyboardOpen, true);
+    document.addEventListener("focusout", handleKeyboardClose, true);
   }
 
   function getLatestValidUntil(rules = []) {
