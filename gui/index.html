@@ -2048,7 +2048,7 @@
     const sheetOrders = document.getElementById("sheet-orders");
     if (!sheetOrders) return;
 
-    // se esiste un contenitore scrollabile interno, usalo
+    // contenitore scrollabile interno (foglio ordini vero e proprio)
     const scrollContainer =
       sheetOrders.querySelector(".sheet") ||
       sheetOrders.closest(".sheet") ||
@@ -2059,19 +2059,18 @@
       scrollContainer.scrollTop = 0;
     }
 
-    // porta il foglio ordini in vista, con il titolo visibile
+    // porta il foglio ordini in vista, con il titolo "Storico ordini" visibile
     setTimeout(() => {
       try {
-        (sheetOrders.scrollIntoView || scrollContainer.scrollIntoView).call(
-          sheetOrders.scrollIntoView ? sheetOrders : scrollContainer,
-          {
-            behavior: "smooth",
-            block: "start",
-          }
-        );
+        const target = sheetOrders;
+        target.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
       } catch (e) {
         const rect = sheetOrders.getBoundingClientRect();
-        const offset = window.scrollY + rect.top - 16;
+        // offset leggermente più basso per compensare la barra indirizzo mobile
+        const offset = window.scrollY + rect.top - 80;
         window.scrollTo({ top: offset, behavior: "smooth" });
       }
     }, 80);
@@ -2107,7 +2106,7 @@
   if (btnPromoPointsClose) {
     btnPromoPointsClose.addEventListener("click", () => hideSheet(sheetPromoPoints));
   }
-  if (btnOrders) {
+  if (btnOrders && sheetOrders) {
     btnOrders.addEventListener("click", () => {
       window.CURRENT_VIEW = "orders";
       showSheet(sheetOrders);
