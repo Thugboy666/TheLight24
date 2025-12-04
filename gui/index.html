@@ -614,6 +614,38 @@
       z-index: 60;
     }
 
+    #toast-container {
+      position: fixed;
+      top: 12px;
+      right: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 80;
+      max-width: 280px;
+      pointer-events: none;
+    }
+
+    .toast-notification {
+      background: rgba(0,0,0,0.85);
+      color: #ffffff;
+      padding: 10px 12px;
+      border-radius: 12px;
+      box-shadow: 0 8px 24px rgba(0,0,0,0.15);
+      font-size: 12px;
+      line-height: 1.3;
+      border: 1px solid rgba(255, 123, 0, 0.6);
+      pointer-events: auto;
+      animation: fadeIn 0.2s ease-out;
+    }
+
+    .toast-notification strong { display: block; margin-bottom: 4px; }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(-6px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
     /* LLM CHAT SHEET */
     #sheet-llm-chat .sheet {
       border-top-left-radius: 18px;
@@ -1490,6 +1522,31 @@
         </div>
 
         <div class="html-preview" id="daily-summary" style="margin-top:6px;"></div>
+
+        <hr style="margin:12px 0;" />
+        <section class="admin-card">
+          <h3>Impostazioni notifiche</h3>
+          <label>
+            <input type="checkbox" id="notify_macro_offers">
+            Abilita notifiche macro offerte
+          </label>
+          <label>
+            <input type="checkbox" id="notify_daily_deal">
+            Abilita notifiche offerta giornaliera
+          </label>
+          <label>
+            <input type="checkbox" id="notify_event_offer">
+            Abilita notifiche offerte evento (Natale, ecc.)
+          </label>
+          <label>
+            <input type="checkbox" id="notify_order_status">
+            Abilita notifiche cambio stato ordini
+          </label>
+          <button id="save_notification_settings" class="btn-primary">
+            Salva impostazioni notifiche
+          </button>
+          <p id="notification_settings_status" class="small-hint"></p>
+        </section>
       </div>
       <div id="admin-section-import" style="display:none;">
         <h3 style="margin:4px 0;">Import Listino .XLSX</h3>
@@ -1587,6 +1644,7 @@
   </div>
 
   <div id="toast"></div>
+  <div id="toast-container" aria-live="polite"></div>
 </div>
 
 <script>
@@ -1722,6 +1780,7 @@
   let currentEntityType = null;
 
   let currentProductPrice = 0;
+  let notificationPoller = null;
 
   const canvas = document.getElementById("universe-canvas");
   const appEl = document.getElementById("app");
@@ -1729,6 +1788,7 @@
   const zoomLevelLabel = document.getElementById("zoom-level");
   const locationPathLabel = document.getElementById("location-path");
   const toast = document.getElementById("toast");
+  const toastContainer = document.getElementById("toast-container");
 
   const entityCard = document.getElementById("entity-card");
   const entityTypeEl = document.getElementById("entity-type");
@@ -1883,6 +1943,13 @@
   const promoEndDateInput = document.getElementById("promo-end-date");
   const promoSummaryBox = document.getElementById("promo-summary");
   const promoRulesStatic = document.getElementById("promo-rules-static");
+
+  const notifyMacroOffersInput = document.getElementById("notify_macro_offers");
+  const notifyDailyDealInput = document.getElementById("notify_daily_deal");
+  const notifyEventOfferInput = document.getElementById("notify_event_offer");
+  const notifyOrderStatusInput = document.getElementById("notify_order_status");
+  const btnSaveNotificationSettings = document.getElementById("save_notification_settings");
+  const notificationSettingsStatus = document.getElementById("notification_settings_status");
 
   const dailyProductSearchInput = document.getElementById("daily-product-search");
   const dailyProductSelect = document.getElementById("daily-product-select");
@@ -2112,6 +2179,9 @@
   if (btnPromoSaveConfig) {
     btnPromoSaveConfig.addEventListener("click", savePromoConfig);
   }
+  if (btnSaveNotificationSettings) {
+    btnSaveNotificationSettings.addEventListener("click", saveNotificationSettings);
+  }
   if (promoClientSelect) {
     promoClientSelect.addEventListener("change", () => {
       const id = promoClientSelect.value;
@@ -2286,6 +2356,70 @@
     setTimeout(() => { toast.style.display = "none"; }, 2500);
   }
 
+  async function ensureNotificationPermission() {
+    if (!("Notification" in window)) return;
+    if (Notification.permission === "default") {
+      try {
+        await Notification.requestPermission();
+      } catch (e) {
+        console.error("Errore richiesta permesso notifiche", e);
+      }
+    }
+  }
+
+  function showInAppToast(title, message) {
+    if (!toastContainer) return;
+    const toastEl = document.createElement("div");
+    toastEl.className = "toast-notification";
+    toastEl.innerHTML = `<strong>${title || "Notifica"}</strong><span>${message || ""}</span>`;
+    toastContainer.appendChild(toastEl);
+    setTimeout(() => {
+      if (toastEl.parentElement) {
+        toastEl.parentElement.removeChild(toastEl);
+      }
+    }, 6000);
+  }
+
+  function showNotificationClientSide(n) {
+    const title = n.title || "Notifica";
+    const message = n.message || "";
+    if ("Notification" in window && Notification.permission === "granted") {
+      new Notification(title, { body: message });
+    } else {
+      showInAppToast(title, message);
+    }
+  }
+
+  async function pollNotifications() {
+    if (!currentUser.logged || !currentUser.token) return;
+    try {
+      const res = await fetch(BASE_URL + "/notifications/poll", {
+        headers: buildAuthHeaders(),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (Array.isArray(data.notifications)) {
+        data.notifications.forEach(showNotificationClientSide);
+      }
+    } catch (err) {
+      console.error("Errore nel polling notifiche", err);
+    }
+  }
+
+  function startNotificationPolling() {
+    if (notificationPoller) return;
+    ensureNotificationPermission();
+    pollNotifications();
+    notificationPoller = window.setInterval(pollNotifications, 25000);
+  }
+
+  function stopNotificationPolling() {
+    if (notificationPoller) {
+      clearInterval(notificationPoller);
+      notificationPoller = null;
+    }
+  }
+
   function buildAuthHeaders(contentType = "application/json") {
     const headers = {};
     if (contentType) headers["Content-Type"] = contentType;
@@ -2360,6 +2494,7 @@
     currentUser = { logged: false, tier: "ospite", name: null, token: null, email: null, is_admin: false };
     currentClient = null;
     clearSessionStorage();
+    stopNotificationPolling();
     updateUserUI();
     showToast("Sei uscito dall'account.");
   }
@@ -3213,6 +3348,58 @@
     }
   }
 
+  async function loadNotificationSettings() {
+    if (!currentUser.is_admin) return;
+    try {
+      const res = await fetch(BASE_URL + "/admin/notifications/settings", {
+        headers: buildAuthHeaders(),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (notifyMacroOffersInput) notifyMacroOffersInput.checked = !!data.notify_macro_offers;
+      if (notifyDailyDealInput) notifyDailyDealInput.checked = !!data.notify_daily_deal;
+      if (notifyEventOfferInput) notifyEventOfferInput.checked = !!data.notify_event_offer;
+      if (notifyOrderStatusInput) notifyOrderStatusInput.checked = !!data.notify_order_status;
+      if (notificationSettingsStatus) notificationSettingsStatus.textContent = "";
+    } catch (err) {
+      console.error("Errore caricamento impostazioni notifiche", err);
+    }
+  }
+
+  async function saveNotificationSettings() {
+    if (!currentUser.is_admin) {
+      showToast("Solo gli admin possono salvare le notifiche", false);
+      return;
+    }
+    const payload = {
+      notify_macro_offers: !!notifyMacroOffersInput?.checked,
+      notify_daily_deal: !!notifyDailyDealInput?.checked,
+      notify_event_offer: !!notifyEventOfferInput?.checked,
+      notify_order_status: !!notifyOrderStatusInput?.checked,
+    };
+    try {
+      const res = await fetch(BASE_URL + "/admin/notifications/settings", {
+        method: "POST",
+        headers: buildAuthHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok || data.status !== "ok") {
+        throw new Error(data.message || "Errore salvataggio");
+      }
+      if (notificationSettingsStatus) {
+        notificationSettingsStatus.textContent = "Impostazioni salvate";
+      }
+      showToast("Impostazioni notifiche salvate");
+    } catch (err) {
+      console.error("Errore salvataggio impostazioni notifiche", err);
+      if (notificationSettingsStatus) {
+        notificationSettingsStatus.textContent = "Errore nel salvataggio";
+      }
+      showToast("Errore nel salvataggio notifiche", false);
+    }
+  }
+
   async function addPromoPoints() {
     const clientId = promoClientSelect?.value;
     const actionCode = promoActionSelect?.value;
@@ -3688,17 +3875,23 @@
         currentUser.logged = true;
         currentUser.name = json.name || payload.email;
         currentUser.tier = json.tier || "rivenditore10";
-        currentUser.token = json.token || null;
-        currentUser.email = payload.email;
-        currentUser.is_admin = !!json.is_admin;
-        updateUserUI();
-        hideSheet(sheetLogin);
-        showToast("Bentornato, " + currentUser.name);
+      currentUser.token = json.token || null;
+      currentUser.email = payload.email;
+      currentUser.is_admin = !!json.is_admin;
+      updateUserUI();
+      hideSheet(sheetLogin);
+      showToast("Bentornato, " + currentUser.name);
 
-        saveSessionToStorage(
-          { name: currentUser.name, tier: currentUser.tier, email: payload.email, is_admin: currentUser.is_admin },
-          currentUser.token,
-          remember
+      ensureNotificationPermission();
+      if (currentUser.token) startNotificationPolling();
+      if (currentUser.is_admin) {
+        await loadNotificationSettings();
+      }
+
+      saveSessionToStorage(
+        { name: currentUser.name, tier: currentUser.tier, email: payload.email, is_admin: currentUser.is_admin },
+        currentUser.token,
+        remember
         );
       } else {
         showToast("Credenziali errate.", false);
@@ -5257,6 +5450,9 @@
       refreshDailyProductSelect(dailyProductSearchInput ? dailyProductSearchInput.value : "");
       fillDailyFormFromOffer();
       renderPriceListTable(priceListSearchInput ? priceListSearchInput.value : "");
+      if (currentUser.is_admin) {
+        await loadNotificationSettings();
+      }
     } catch (e) {
       console.error("Errore bootstrapUniverse", e);
     } finally {
@@ -5265,6 +5461,11 @@
       fillClientForm();
       switchAdminTab("clients");
       updateLabels();
+      if (currentUser.logged && currentUser.token) {
+        startNotificationPolling();
+      } else {
+        stopNotificationPolling();
+      }
     }
   }
 

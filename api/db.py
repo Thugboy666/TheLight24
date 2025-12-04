@@ -239,6 +239,39 @@ def init_db() -> None:
             )
         if "product_url" not in daily_cols:
             cur.execute("ALTER TABLE daily_offer ADD COLUMN product_url TEXT")
+
+        # NOTIFICATION SETTINGS
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS notification_settings (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                scope TEXT NOT NULL UNIQUE,
+                notify_macro_offers INTEGER DEFAULT 1,
+                notify_daily_deal INTEGER DEFAULT 1,
+                notify_event_offer INTEGER DEFAULT 1,
+                notify_order_status INTEGER DEFAULT 1,
+                updated_at TEXT
+            )
+            """
+        )
+        existing_settings = cur.execute(
+            "SELECT * FROM notification_settings WHERE scope = ?", ("global",)
+        ).fetchone()
+        if not existing_settings:
+            now = datetime.now(timezone.utc).isoformat()
+            cur.execute(
+                """
+                INSERT INTO notification_settings (
+                    scope,
+                    notify_macro_offers,
+                    notify_daily_deal,
+                    notify_event_offer,
+                    notify_order_status,
+                    updated_at
+                ) VALUES (?, 1, 1, 1, 1, ?)
+                """,
+                ("global", now),
+            )
         conn.commit()
 
 
@@ -784,6 +817,92 @@ def get_meta_value(key: str) -> Optional[str]:
         return row["value"]
 
 
+# ========== NOTIFICATION SETTINGS ========== #
+
+
+def get_notification_settings() -> Dict[str, Any]:
+    """Restituisce le impostazioni di notifica, creando un record di default."""
+
+    with get_db() as conn:
+        cur = conn.execute(
+            "SELECT * FROM notification_settings WHERE scope = ?", ("global",)
+        )
+        row = cur.fetchone()
+        if not row:
+            now = datetime.now(timezone.utc).isoformat()
+            conn.execute(
+                """
+                INSERT INTO notification_settings (
+                    scope,
+                    notify_macro_offers,
+                    notify_daily_deal,
+                    notify_event_offer,
+                    notify_order_status,
+                    updated_at
+                ) VALUES (?, 1, 1, 1, 1, ?)
+                """,
+                ("global", now),
+            )
+            conn.commit()
+            return {
+                "scope": "global",
+                "notify_macro_offers": True,
+                "notify_daily_deal": True,
+                "notify_event_offer": True,
+                "notify_order_status": True,
+                "updated_at": now,
+            }
+
+        data = row_to_dict(row)
+        for key in (
+            "notify_macro_offers",
+            "notify_daily_deal",
+            "notify_event_offer",
+            "notify_order_status",
+        ):
+            data[key] = bool(data.get(key))
+        return data
+
+
+def update_notification_settings(payload: Dict[str, Any]) -> Dict[str, Any]:
+    now = datetime.now(timezone.utc).isoformat()
+    notify_macro_offers = 1 if payload.get("notify_macro_offers", True) else 0
+    notify_daily_deal = 1 if payload.get("notify_daily_deal", True) else 0
+    notify_event_offer = 1 if payload.get("notify_event_offer", True) else 0
+    notify_order_status = 1 if payload.get("notify_order_status", True) else 0
+
+    with get_db() as conn:
+        conn.execute(
+            """
+            INSERT INTO notification_settings (
+                scope,
+                notify_macro_offers,
+                notify_daily_deal,
+                notify_event_offer,
+                notify_order_status,
+                updated_at
+            ) VALUES (:scope, :notify_macro_offers, :notify_daily_deal, :notify_event_offer, :notify_order_status, :updated_at)
+            ON CONFLICT(scope) DO UPDATE SET
+                notify_macro_offers = excluded.notify_macro_offers,
+                notify_daily_deal = excluded.notify_daily_deal,
+                notify_event_offer = excluded.notify_event_offer,
+                notify_order_status = excluded.notify_order_status,
+                updated_at = excluded.updated_at
+            """,
+            {
+                "scope": "global",
+                "notify_macro_offers": notify_macro_offers,
+                "notify_daily_deal": notify_daily_deal,
+                "notify_event_offer": notify_event_offer,
+                "notify_order_status": notify_order_status,
+                "updated_at": now,
+            },
+        )
+        conn.commit()
+
+    return get_notification_settings()
+
+
 # ========== DAILY OFFER ========== #
 
 
@@ -986,6 +1105,8 @@ __all__ = [
     "save_import_metadata",
     "set_meta_value",
     "get_meta_value",
+    "get_notification_settings",
+    "update_notification_settings",
     "delete_orders_older_than",
     "bulk_insert_orders",
     "list_orders",
