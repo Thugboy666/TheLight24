@@ -2075,7 +2075,21 @@
     btnPromoPointsClose.addEventListener("click", () => hideSheet(sheetPromoPoints));
   }
   if (btnOrders) {
-    btnOrders.addEventListener("click", () => openOrders());
+    btnOrders.addEventListener("click", () => {
+      window.CURRENT_VIEW = "orders";
+      showSheet(sheetOrders);
+
+      // forza la pagina in alto quando entro negli ordini
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+
+      // se il foglio ordini è scrollabile internamente, resetta il suo scroll
+      const ordersModal = document.querySelector("#sheet-orders .sheet");
+      if (ordersModal) {
+        ordersModal.scrollTop = 0;
+      }
+    });
   }
   if (btnOrdersShortcut) {
     btnOrdersShortcut.addEventListener("click", () => openOrders());
