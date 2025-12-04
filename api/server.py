@@ -25,6 +25,7 @@ from .db import (
     get_client_by_email,
     find_client_by_email_or_piva,
     get_daily_offer,
+    get_notification_settings,
     get_product_by_sku,
     get_promo_summary,
     get_session,
@@ -40,6 +41,7 @@ from .db import (
     list_products,
     save_client,
     save_import_metadata,
+    update_notification_settings,
     set_meta_value,
     save_daily_offer,
     update_user_password,
@@ -156,6 +158,87 @@ def verify_password(plain_password: str, stored_hash: str) -> bool:
     if stored_hash == plain_password:
         return True
     return False
+
+
+def get_user_from_request(request: web.Request) -> tuple[Optional[dict], Optional[dict]]:
+    """Estrae l'utente autenticato dalla richiesta (token Bearer)."""
+
+    token = request.headers.get("Authorization", "").replace("Bearer", "").strip()
+    if not token:
+        return None, None
+    session = get_session(token)
+    if not session:
+        return None, None
+    user = get_user_by_id(session.get("user_id"))
+    return user, session
+
+
+NOTIFICATION_FLAG_MAP = {
+    "macro_offer": "notify_macro_offers",
+    "daily_deal": "notify_daily_deal",
+    "event_offer": "notify_event_offer",
+    "order_status": "notify_order_status",
+}
+
+
+def _get_notification_queue(app: web.Application) -> list[dict]:
+    if "pending_notifications" not in app:
+        app["pending_notifications"] = []
+    return app["pending_notifications"]
+
+
+async def send_native_push_stub(
+    user_id: Optional[int], notification_type: str, payload: dict
+) -> None:
+    """Stub per futura integrazione con FCM/APNs."""
+
+    _ = (user_id, notification_type, payload)
+    return
+
+
+async def dispatch_notification(
+    app: web.Application, notification_type: str, payload: dict
+) -> None:
+    """Invia una notifica se la tipologia è abilitata nelle impostazioni globali."""
+
+    settings = get_notification_settings()
+    flag_key = NOTIFICATION_FLAG_MAP.get(notification_type)
+    if not flag_key:
+        logger.warning("Tipo di notifica non riconosciuto: %s", notification_type)
+        return
+
+    if not settings.get(flag_key, True):
+        logger.info("Notifiche %s disabilitate, salto", notification_type)
+        return
+
+    target_user_id: Optional[int] = None
+    if payload.get("user_id") is not None:
+        try:
+            target_user_id = int(payload.get("user_id"))
+        except (TypeError, ValueError):
+            target_user_id = None
+
+    notification = {
+        "id": uuid.uuid4().hex,
+        "type": notification_type,
+        "title": payload.get("title") or "Notifica",
+        "message": payload.get("message") or "",
+        "created_at": now_iso(),
+        "data": payload,
+        "target_user_id": target_user_id,
+        "delivered_to": set(),
+    }
+
+    queue = _get_notification_queue(app)
+    queue.append(notification)
+    app["pending_notifications"] = queue
+
+    await send_native_push_stub(target_user_id, notification_type, payload)
+
+
+def _serialize_notification_for_client(notification: dict) -> dict:
+    serialized = {k: v for k, v in notification.items() if k != "delivered_to"}
+    return serialized
 
 
 def normalize_header(value: str) -> str:
@@ -583,6 +666,106 @@ async def account_orders(request: web.Request) -> web.Response:
     return web.json_response({"orders": orders})
 
 
+async def admin_notification_settings_get(request: web.Request) -> web.Response:
+    user, _ = get_user_from_request(request)
+    if not user:
+        return web.json_response(
+            {"status": "error", "message": "Non autorizzato"}, status=401
+        )
+    if not user.get("is_admin"):
+        return web.json_response({"status": "forbidden"}, status=403)
+
+    settings = get_notification_settings()
+    response = {
+        "notify_macro_offers": bool(settings.get("notify_macro_offers", True)),
+        "notify_daily_deal": bool(settings.get("notify_daily_deal", True)),
+        "notify_event_offer": bool(settings.get("notify_event_offer", True)),
+        "notify_order_status": bool(settings.get("notify_order_status", True)),
+    }
+    return web.json_response(response)
+
+
+async def admin_notification_settings_save(request: web.Request) -> web.Response:
+    user, _ = get_user_from_request(request)
+    if not user:
+        return web.json_response(
+            {"status": "error", "message": "Non autorizzato"}, status=401
+        )
+    if not user.get("is_admin"):
+        return web.json_response({"status": "forbidden"}, status=403)
+
+    body = await request.json()
+    expected_keys = {
+        "notify_macro_offers",
+        "notify_daily_deal",
+        "notify_event_offer",
+        "notify_order_status",
+    }
+    for key in expected_keys:
+        if key not in body:
+            return web.json_response(
+                {"status": "error", "message": f"Campo mancante: {key}"},
+                status=400,
+            )
+        if not isinstance(body.get(key), bool):
+            return web.json_response(
+                {"status": "error", "message": f"Valore non valido per {key}"},
+                status=400,
+            )
+
+    updated = update_notification_settings(body)
+    response = {
+        "status": "ok",
+        "settings": {
+            "notify_macro_offers": bool(updated.get("notify_macro_offers", True)),
+            "notify_daily_deal": bool(updated.get("notify_daily_deal", True)),
+            "notify_event_offer": bool(updated.get("notify_event_offer", True)),
+            "notify_order_status": bool(updated.get("notify_order_status", True)),
+        },
+    }
+    return web.json_response(response)
+
+
+async def notifications_poll(request: web.Request) -> web.Response:
+    user, _ = get_user_from_request(request)
+    if not user:
+        return web.json_response(
+            {"status": "error", "message": "Non autorizzato"}, status=401
+        )
+
+    user_id = user.get("id")
+    queue = _get_notification_queue(request.app)
+    deliverable: list[dict] = []
+    remaining: list[dict] = []
+
+    for notif in queue:
+        delivered_to = notif.get("delivered_to") or set()
+        if isinstance(delivered_to, list):
+            delivered_to = set(delivered_to)
+        notif["delivered_to"] = delivered_to
+
+        target = notif.get("target_user_id")
+        if target is not None and target != user_id:
+            remaining.append(notif)
+            continue
+
+        if target is not None and target == user_id:
+            deliverable.append(_serialize_notification_for_client(notif))
+            continue
+
+        if user_id in delivered_to:
+            remaining.append(notif)
+            continue
+
+        delivered_to.add(user_id)
+        notif["delivered_to"] = delivered_to
+        remaining.append(notif)
+        deliverable.append(_serialize_notification_for_client(notif))
+
+    request.app["pending_notifications"] = remaining
+    return web.json_response({"notifications": deliverable})
+
+
 async def admin_clients_all(request: web.Request) -> web.Response:
     clients: list[dict] = []
     for client in list_clients():
@@ -890,6 +1073,16 @@ async def admin_offers_save(request: web.Request) -> web.Response:
                 discount_percent=float(rule.get("discount", 0)),
                 valid_until=rule.get("valid_until"),
             )
+    await dispatch_notification(
+        request.app,
+        "macro_offer",
+        {
+            "title": "Macro offerta aggiornata",
+            "message": f"Aggiornata la configurazione per {offer_id}",
+            "offer_id": offer_id,
+            "rules": rules,
+        },
+    )
     return web.json_response({"status": "ok", "config": body})
 
 
@@ -1156,6 +1349,21 @@ async def admin_daily_offer_save(request: web.Request) -> web.Response:
     body["product_url"] = product_url
     offer = save_daily_offer(body)
     enriched = _enrich_daily_offer(offer)
+    if enriched and enriched.get("active"):
+        await dispatch_notification(
+            request.app,
+            "daily_deal",
+            {
+                "title": "Offerta del giorno",
+                "message": f"{enriched.get('product_name') or enriched.get('sku')} in promo",
+                "product_id": enriched.get("sku"),
+                "discounts": {
+                    "distributore": enriched.get("discount_dist_percent"),
+                    "rivenditore": enriched.get("discount_riv_percent"),
+                    "rivenditore10": enriched.get("discount_riv10_percent"),
+                },
+            },
+        )
     return web.json_response(enriched)
 
 
@@ -1331,6 +1539,7 @@ async def request_logger_middleware(request: web.Request, handler):
 def create_app() -> web.Application:
     app = web.Application(middlewares=[request_logger_middleware])
     app["db"] = db
+    app["pending_notifications"] = []
 
     # GUI
     app.router.add_get("/", ui_index)
@@ -1374,9 +1583,18 @@ def create_app() -> web.Application:
     app.router.add_get("/admin/daily-offer", admin_daily_offer_get)
     app.router.add_post("/admin/daily-offer", admin_daily_offer_save)
     app.router.add_delete("/admin/daily-offer", admin_daily_offer_delete)
+    app.router.add_get(
+        "/admin/notifications/settings", admin_notification_settings_get
+    )
+    app.router.add_post(
+        "/admin/notifications/settings", admin_notification_settings_save
+    )
 
     # PUBLIC OFFER
     app.router.add_get("/offer/daily", public_daily_offer)
+
+    # NOTIFICATIONS
+    app.router.add_get("/notifications/poll", notifications_poll)
 
     # LLM
     app.router.add_post("/llm/complete", llm_complete)
