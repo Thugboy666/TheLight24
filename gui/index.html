@@ -2075,13 +2075,17 @@
     btnAdmin.addEventListener("click", () => {
       window.CURRENT_VIEW = "admin";
       showSheet(sheetAdmin);
-      document.body.classList.add("admin-mode");
 
-      setTimeout(() => {
-        document.documentElement.scrollTop = 0;
-        document.body.scrollTop = 0;
-        window.scrollTo(0, 0);
-      }, 50);
+      // forza lo scroll della pagina in alto
+      window.scrollTo(0, 0);
+      document.documentElement.scrollTop = 0;
+      document.body.scrollTop = 0;
+
+      // reset scroll interno dello sheet admin
+      const adminModal = document.querySelector("#sheet-admin .sheet");
+      if (adminModal) {
+        adminModal.scrollTop = 0;
+      }
     });
   }
   if (btnAdminClose) {
@@ -5025,45 +5029,40 @@
   function setupInputAutoScroll() {
     if (!isMobileDevice()) return;
 
-    function handleKeyboardOpen(event) {
-      const target = event.target;
-      if (!(target instanceof HTMLElement)) return;
+    document.addEventListener(
+      "focusin",
+      (event) => {
+        const target = event.target;
+        if (!(target instanceof HTMLElement)) return;
 
-      // Consideriamo solo input, textarea e select
-      const tag = target.tagName;
-      if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") return;
+        // Applichiamo lo scroll a tutti i campi input/textarea/select,
+        // incluso il pannello admin.
+        const tag = target.tagName;
+        if (tag !== "INPUT" && tag !== "TEXTAREA" && tag !== "SELECT") return;
 
-      // Se il campo è dentro uno sheet (login, register, ADMIN, promo, ecc.)
-      const modal = target.closest(".sheet");
-      const scrollContainer = modal || document.scrollingElement || document.body;
+        const modal = target.closest(".sheet");
+        const scrollContainer = modal || document.scrollingElement || document.body;
 
-      setTimeout(() => {
-        try {
-          // Centra il campo nella viewport, vale anche per il pannello admin
-          target.scrollIntoView({
-            behavior: "smooth",
-            block: "center",
-          });
-        } catch (e) {
-          const rect = target.getBoundingClientRect();
-          const baseScroll = modal ? modal.scrollTop : window.scrollY;
-          const offset = rect.top + baseScroll - window.innerHeight / 3;
-          if (scrollContainer && typeof scrollContainer.scrollTo === "function") {
-            scrollContainer.scrollTo({ top: offset, behavior: "smooth" });
-          } else {
-            window.scrollTo(0, offset);
+        setTimeout(() => {
+          try {
+            target.scrollIntoView({
+              behavior: "smooth",
+              block: "center",
+            });
+          } catch (e) {
+            const rect = target.getBoundingClientRect();
+            const baseScroll = modal ? modal.scrollTop : window.scrollY;
+            const offset = rect.top + baseScroll - window.innerHeight / 3;
+            if (scrollContainer && typeof scrollContainer.scrollTo === "function") {
+              scrollContainer.scrollTo({ top: offset, behavior: "smooth" });
+            } else {
+              window.scrollTo(0, offset);
+            }
           }
-        }
-      }, 150);
-    }
-
-    function handleKeyboardClose(_event) {
-      // Non facciamo nulla alla chiusura, così non forziamo l'admin a tornare su/giù
-      return;
-    }
-
-    document.addEventListener("focusin", handleKeyboardOpen, true);
-    document.addEventListener("focusout", handleKeyboardClose, true);
+        }, 150);
+      },
+      true
+    );
   }
 
   function getLatestValidUntil(rules = []) {
