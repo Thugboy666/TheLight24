@@ -47,6 +47,13 @@
       gap: 6px;
       min-height: 46px;
     }
+    .top-bar-main {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex: 1;
+      min-width: 0;
+    }
     #brand {
       display: flex;
       flex-direction: column;
@@ -91,6 +98,82 @@
       border-width: 1px;
       max-width: 220px;
       text-align: left;
+    }
+
+    .daily-offer-wrapper {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 4px;
+    }
+
+    .quick-actions-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-top: 6px;
+    }
+
+    .quick-action-btn {
+      width: 34px;
+      height: 34px;
+      border-radius: 999px;
+      border: 2px solid #f97316;
+      background: #fff7ed;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 4px;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+    }
+
+    .quick-action-btn img {
+      max-width: 80%;
+      max-height: 80%;
+      display: block;
+    }
+
+    .quick-action-mail-wrapper {
+      position: relative;
+    }
+
+    .quick-mail-menu {
+      position: absolute;
+      top: 40px;
+      right: 0;
+      min-width: 210px;
+      background: #fff7ed;
+      border-radius: 12px;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.18);
+      padding: 6px 4px;
+      z-index: 90;
+      display: none;
+    }
+
+    .quick-mail-menu button {
+      width: 100%;
+      text-align: left;
+      padding: 6px 10px;
+      border: none;
+      background: transparent;
+      font-size: 0.85rem;
+      border-radius: 8px;
+    }
+
+    .quick-mail-menu button:hover {
+      background: #fee2c5;
+    }
+
+    .ormanet-logo-link {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .ormanet-logo-small {
+      height: 28px;
+      width: auto;
+      display: block;
     }
 
     .daily-offer-icon {
@@ -737,23 +820,70 @@
 
   <!-- TOP BAR -->
   <div id="top-bar">
-    <div id="brand">
-      <a href="https://www.ormanet.it" target="_blank">
-        <img id="brand-logo" src="/assets/logo_ormanet.png" alt="Ormanet" />
-      </a>
-      <div id="brand-sub">powered by thelight24</div>
-      <div id="brand-title"></div>
-    </div>
+    <div class="top-bar-main">
+      <div id="brand">
+        <a
+          href="https://www.ormanet.it"
+          target="_blank"
+          rel="noopener noreferrer"
+          class="ormanet-logo-link"
+        >
+          <img id="brand-logo" src="/assets/logo_ormanet.png" alt="Ormanet" class="ormanet-logo-small" />
+        </a>
+        <div id="brand-sub">powered by thelight24</div>
+        <div id="brand-title"></div>
+      </div>
 
-    <button class="btn daily-offer-btn" id="btn-daily-offer">
-      <span class="daily-offer-icon">
-        <img src="/assets/textures/coupon.png" alt="Coupon" style="width:18px;height:18px;object-fit:contain;" />
-      </span>
-      <span class="daily-offer-text">
-        <span class="daily-offer-line1">Offerta daily</span>
-        <span class="daily-offer-line2">prodotto del giorno in sconto</span>
-      </span>
-    </button>
+      <div class="daily-offer-wrapper">
+        <button class="btn daily-offer-btn" id="btn-daily-offer">
+          <span class="daily-offer-icon">
+            <img src="/assets/textures/coupon.png" alt="Coupon" style="width:18px;height:18px;object-fit:contain;" />
+          </span>
+          <span class="daily-offer-text">
+            <span class="daily-offer-line1">Offerta daily</span>
+            <span class="daily-offer-line2">prodotto del giorno in sconto</span>
+          </span>
+        </button>
+
+        <div class="quick-actions-row">
+          <button
+            type="button"
+            class="quick-action-btn"
+            id="btn-quick-phone"
+            aria-label="Chiama Ormanet"
+          >
+            <img src="/assets/textures/phone.png" alt="Telefono" />
+          </button>
+
+          <button
+            type="button"
+            class="quick-action-btn"
+            id="btn-quick-whats"
+            aria-label="WhatsApp Ormanet"
+          >
+            <img src="/assets/textures/whats.png" alt="WhatsApp" />
+          </button>
+
+          <div class="quick-action-mail-wrapper">
+            <button
+              type="button"
+              class="quick-action-btn"
+              id="btn-quick-mail"
+              aria-label="Invia email a Ormanet"
+            >
+              <img src="/assets/textures/mail.png" alt="Email" />
+            </button>
+
+            <div class="quick-mail-menu" id="quick-mail-menu">
+              <button type="button" data-email="oriana@ormanet.it">Commerciale Oriana</button>
+              <button type="button" data-email="ivan@ormanet.it">Commerciale Ivan</button>
+              <button type="button" data-email="david@ormanet.it">Commerciale David</button>
+              <button type="button" data-email="marketing@ormanet.it">Area Marketing</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
     <div id="user-panel">
       <div class="pill" id="tier-pill">
         <span class="label">Listino:</span>
@@ -1848,6 +1978,10 @@
   const btnAddToCart = document.getElementById("btn-add-to-cart");
   const btnCopyCoupon = document.getElementById("btn-copy-coupon");
   const btnGoCart = document.getElementById("btn-go-cart");
+  const btnQuickPhone = document.getElementById("btn-quick-phone");
+  const btnQuickWhats = document.getElementById("btn-quick-whats");
+  const btnQuickMail = document.getElementById("btn-quick-mail");
+  const quickMailMenu = document.getElementById("quick-mail-menu");
 
   const sheetRegister = document.getElementById("sheet-register");
   const sheetLogin = document.getElementById("sheet-login");
@@ -2350,6 +2484,54 @@
       openDailyOfferForUser();
     });
   }
+  if (btnQuickPhone) {
+    btnQuickPhone.addEventListener("click", () => {
+      window.location.href = "tel:0818531374";
+    });
+  }
+  if (btnQuickWhats) {
+    btnQuickWhats.addEventListener("click", () => {
+      const waUrl = "https://wa.me/390818531374";
+      window.open(waUrl, "_blank");
+    });
+  }
+  if (btnQuickMail && quickMailMenu) {
+    btnQuickMail.addEventListener("click", () => {
+      const isVisible = quickMailMenu.style.display === "block";
+      quickMailMenu.style.display = isVisible ? "none" : "block";
+    });
+
+    document.addEventListener("click", (ev) => {
+      if (
+        !quickMailMenu.contains(ev.target) &&
+        ev.target !== btnQuickMail &&
+        !btnQuickMail.contains(ev.target)
+      ) {
+        quickMailMenu.style.display = "none";
+      }
+    });
+
+    quickMailMenu.querySelectorAll("button[data-email]").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const toEmail = btn.getAttribute("data-email");
+        const userEmail = getCurrentUserEmail();
+        const subject = encodeURIComponent("[Richiesta Assistenza Ormanet]");
+        let bodyLines = [];
+
+        if (userEmail) {
+          bodyLines.push("Mittente (email account Ormanet): " + userEmail);
+          bodyLines.push("");
+        }
+        bodyLines.push("Scrivi qui la tua richiesta di assistenza...");
+
+        const body = encodeURIComponent(bodyLines.join("\n"));
+        const mailtoUrl = `mailto:${toEmail}?subject=${subject}&body=${body}`;
+
+        window.location.href = mailtoUrl;
+        quickMailMenu.style.display = "none";
+      });
+    });
+  }
   if (dailyCouponCloseBtn) {
     dailyCouponCloseBtn.addEventListener("click", () => {
       hideDailyCouponBox();
@@ -2481,6 +2663,19 @@
     if (contentType) headers["Content-Type"] = contentType;
     if (currentUser.token) headers["Authorization"] = "Bearer " + currentUser.token;
     return headers;
+  }
+
+  function getCurrentUserEmail() {
+    if (currentUser && currentUser.email) {
+      return currentUser.email;
+    }
+    if (window.authState && window.authState.user && window.authState.user.email) {
+      return window.authState.user.email;
+    }
+    if (window.CURRENT_USER_EMAIL) {
+      return window.CURRENT_USER_EMAIL;
+    }
+    return "";
   }
 
   function saveSessionToStorage(user, token, remember) {
