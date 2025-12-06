@@ -5,7 +5,7 @@
   <title>TheLight24 Universe – B2B Console</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <style>
-    :root {
+:root {
       color-scheme: light;
       --accent-color: #ff7b00;
     }
@@ -855,17 +855,6 @@
       cursor: pointer;
     }
 
-    @media (max-width: 800px) {
-      .daily-offer-box.keyboard-open {
-        position: fixed !important;
-        bottom: 0 !important;
-        transform: translateY(-20vh);
-        max-height: 60vh;
-        overflow-y: auto;
-        z-index: 999999;
-      }
-    }
-
     /* ===================== DESKTOP LAYOUT ===================== */
     body.desktop {
       overflow-y: auto;
@@ -1011,6 +1000,17 @@
     body.desktop .sheet .two-cols {
       gap: 14px;
     }
+
+    @media (max-width: 800px) {
+      .daily-offer-box.keyboard-open {
+        position: fixed !important;
+        bottom: 0 !important;
+        transform: translateY(-20vh);
+        max-height: 60vh;
+        overflow-y: auto;
+        z-index: 999999;
+      }
+    }
   </style>
   <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
 </head>
@@ -1104,21 +1104,21 @@
 
   <div class="desktop-wrapper">
     <div id="top-right-controls">
-    <button id="btn-back" class="top-ctrl-btn">
-      <span class="icon">←</span><span>Indietro</span>
-    </button>
-    <button id="btn-open-llm" class="top-ctrl-btn">
-      <span class="icon">✦</span><span>Chat AI</span>
-    </button>
-  </div>
+      <button id="btn-back" class="top-ctrl-btn">
+        <span class="icon">←</span><span>Indietro</span>
+      </button>
+      <button id="btn-open-llm" class="top-ctrl-btn">
+        <span class="icon">✦</span><span>Chat AI</span>
+      </button>
+    </div>
   </div>
 
   <!-- BOTTOM PANEL -->
   <div id="info-panel">
     <div class="desktop-wrapper">
-    <div id="zoom-level">Livello: GALASSIA</div>
-    <div id="location-path">Posizione: /</div>
-    <div id="hint">Pinch/zoom o tap per esplorare. Tocca sistemi, stelle, pianeti e satelliti per scendere di livello.</div>
+      <div id="zoom-level">Livello: GALASSIA</div>
+      <div id="location-path">Posizione: /</div>
+      <div id="hint">Pinch/zoom o tap per esplorare. Tocca sistemi, stelle, pianeti e satelliti per scendere di livello.</div>
 
     <div id="daily-coupon-box" class="coupon-box daily-offer-box" style="display:none; margin-top:8px; padding:10px 10px 16px; border-radius:10px; border:1px solid #f97316; background:rgba(248,250,252,0.98); box-shadow:0 0 0 1px rgba(15,23,42,0.04); position:relative;">
       <button id="daily-coupon-close"
@@ -1222,6 +1222,7 @@
         <span>↑</span><span>Livello su</span>
       </button>
     </div>
+  </div>
   </div>
 
   <!-- MODAL: REGISTRAZIONE -->
@@ -1360,7 +1361,6 @@
           <button class="btn" id="btn-account-logout">Logout</button>
         </div>
       </div>
-    </div>
     </div>
   </div>
 
