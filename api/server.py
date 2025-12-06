@@ -119,6 +119,7 @@ def _resolve_ui_index() -> Path:
 
 
 UI_INDEX = _resolve_ui_index()
+DESKTOP_UI_INDEX = BASE_DIR / "gui" / "INDEX_DESKTOP.html"
 
 # Initialize persistence layer
 init_db()
@@ -392,6 +393,13 @@ def client_payload_from_record(client: Optional[dict]) -> Optional[dict]:
 async def ui_index(request: web.Request) -> web.Response:
     """Serve la GUI 3D (index.html)."""
     return web.FileResponse(path=UI_INDEX)
+
+
+async def ui_desktop_index(request: web.Request) -> web.Response:
+    """Serve la variante desktop della GUI."""
+    if not DESKTOP_UI_INDEX.is_file():
+        return web.Response(status=500, text="GUI desktop non trovata")
+    return web.FileResponse(path=DESKTOP_UI_INDEX)
 
 
 # ================== SYSTEM ==================
@@ -1618,6 +1626,7 @@ def create_app() -> web.Application:
 
     # GUI
     app.router.add_get("/", ui_index)
+    app.router.add_get("/desktop", ui_desktop_index)
 
     # STATIC: assets GUI (logo + textures)
     assets_path = BASE_DIR / "gui" / "assets"
