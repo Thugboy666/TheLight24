@@ -1689,7 +1689,7 @@ app = create_app()
 
 def main() -> None:
     """Avvia il server API aiohttp."""
-    host = os.environ.get("API_HOST", "127.0.0.1")
+    host = os.environ.get("API_HOST", "0.0.0.0")
     port = int(os.environ.get("API_PORT", 8080))
     logger.info(
         "Avvio TheLight24 API server su %s:%s (LLM_BACKEND_URL=%s)",
@@ -1697,7 +1697,8 @@ def main() -> None:
         port,
         LLM_BACKEND_URL,
     )
-    web.run_app(app, host="127.0.0.1", port=8080)
+    print(f"TheLight24 server in ascolto su http://{host}:{port}")
+    web.run_app(app, host=host, port=port)
 
 
 if __name__ == "__main__":
