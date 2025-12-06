@@ -877,35 +877,72 @@
       width: 100%;
     }
 
-    body.desktop #universe-canvas {
+    .desktop-hero {
       position: relative;
-      height: 700px;
+      width: 100%;
+      min-height: 520px;
+      max-height: 78vh;
+      overflow: hidden;
+    }
+
+    .hero-background {
+      position: absolute;
+      inset: 0;
+    }
+
+    body.desktop #universe-canvas {
+      position: absolute;
+      inset: 0;
+      height: 100%;
+      width: 100%;
       max-height: none;
       border-radius: 22px;
       overflow: hidden;
       box-shadow: 0 12px 36px rgba(15, 23, 42, 0.16);
-      margin: 12px auto 0;
       display: block;
     }
 
-    body.desktop #top-bar {
-      position: sticky;
-      top: 0;
-      background: rgba(255, 255, 255, 0.96);
+    .hero-overlay {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 20px 0 28px;
+      pointer-events: none;
+    }
+
+    .hero-overlay .desktop-wrapper {
+      pointer-events: auto;
+    }
+
+    #top-bar {
+      position: relative;
+      background: rgba(255, 255, 255, 0.9);
       backdrop-filter: blur(8px);
       box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
-      padding: 8px 0 10px;
+      padding: 12px 0 14px;
+      border-radius: 18px;
     }
 
     body.desktop #top-bar .desktop-wrapper {
-      padding: 10px 24px 4px;
+      padding: 10px 24px 6px;
       display: flex;
       flex-direction: column;
-      gap: 10px;
+      gap: 12px;
+    }
+
+    .hero-header-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 16px;
+      flex-wrap: wrap;
     }
 
     body.desktop .top-bar-main {
-      align-items: flex-start;
+      align-items: center;
+      width: 100%;
     }
 
     body.desktop #brand-logo {
@@ -913,37 +950,94 @@
       max-height: 36px;
     }
 
-    body.desktop .top-bar-secondary {
-      display: flex;
+    .hero-actions-row {
+      display: grid;
+      grid-template-columns: 1fr auto 1fr;
       align-items: center;
-      justify-content: space-between;
       gap: 14px;
+      width: 100%;
     }
 
-    body.desktop .daily-offer-wrapper {
+    .hero-actions-row > div {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .hero-actions-row > .hero-contacts {
+      justify-content: center;
+    }
+
+    .hero-actions-row > .hero-controls {
+      justify-content: flex-end;
+    }
+
+    .hero-actions-row .daily-offer-wrapper {
       max-width: 520px;
+      justify-self: start;
     }
 
     body.desktop .daily-offer-btn {
-      padding: 8px 14px;
-      min-width: 280px;
+      padding: 10px 16px;
+      min-width: 260px;
       box-shadow: 0 6px 18px rgba(0, 0, 0, 0.08);
       background: #fff7ed;
+    }
+
+    body.desktop .daily-offer-wrapper,
+    .hero-actions-row .daily-offer-wrapper {
+      flex: 1;
+    }
+
+    .hero-actions-row .quick-actions-row {
+      justify-content: center;
+      gap: 12px;
     }
 
     body.desktop .quick-actions-row {
       gap: 12px;
       flex-wrap: wrap;
-      justify-content: flex-end;
     }
 
-    body.desktop #top-right-controls {
-      position: sticky;
-      top: 16px;
-      right: 24px;
+    #top-right-controls {
+      position: static;
       margin-left: auto;
-      background: rgba(255, 255, 255, 0.96);
-      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+      background: transparent;
+      box-shadow: none;
+      padding: 0;
+      gap: 10px;
+    }
+
+    .top-ctrl-btn {
+      pointer-events: auto;
+      font-size: 11px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--accent-color);
+      background: #ffffff;
+      color: #000000;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      box-shadow: 0 3px 10px rgba(0,0,0,0.08);
+    }
+
+    .top-ctrl-btn span.icon {
+      font-size: 11px;
+      opacity: 0.9;
+    }
+
+    .hero-actions-row #top-right-controls {
+      display: inline-flex;
+      justify-content: flex-end;
+      align-items: center;
+      flex-wrap: wrap;
+      min-width: 220px;
+    }
+
+    .desktop-main-content {
+      margin-top: 24px;
     }
 
     body.desktop #info-panel {
@@ -954,7 +1048,7 @@
       background: #ffffff;
       border-radius: 18px;
       box-shadow: 0 12px 32px rgba(15, 23, 42, 0.18);
-      margin: 18px auto 0;
+      margin: 0 auto;
       width: calc(100% - 48px);
       max-width: 1200px;
     }
@@ -1016,105 +1110,117 @@
 </head>
 <body class="desktop">
 <div id="app">
-  <canvas id="universe-canvas"></canvas>
+  <section class="desktop-hero">
+    <div class="hero-background">
+      <canvas id="universe-canvas"></canvas>
+    </div>
 
-  <!-- TOP BAR -->
-  <div id="top-bar">
-    <div class="desktop-wrapper">
-      <div class="top-bar-main">
-        <div id="brand">
-          <a
-            href="https://www.ormanet.it"
-            target="_blank"
-            rel="noopener noreferrer"
-            class="ormanet-logo-link"
-          >
-            <img id="brand-logo" src="/assets/logo_ormanet.png" alt="Ormanet" class="ormanet-logo-small" />
-          </a>
-          <div id="brand-sub">powered by thelight24</div>
-          <div id="brand-title"></div>
-        </div>
+    <div class="hero-overlay">
+      <div id="top-bar">
+        <div class="desktop-wrapper">
+          <div class="hero-header-row">
+            <div class="top-bar-main">
+              <div id="brand">
+                <a
+                  href="https://www.ormanet.it"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  class="ormanet-logo-link"
+                >
+                  <img id="brand-logo" src="/assets/logo_ormanet.png" alt="Ormanet" class="ormanet-logo-small" />
+                </a>
+                <div id="brand-sub">powered by thelight24</div>
+                <div id="brand-title"></div>
+              </div>
 
-        <div id="user-panel">
-          <div class="pill" id="tier-pill">
-            <span class="label">Listino:</span>
-            <span id="tier-label">ospite</span>
+              <div id="user-panel">
+                <div class="pill" id="tier-pill">
+                  <span class="label">Listino:</span>
+                  <span id="tier-label">ospite</span>
+                </div>
+                <button class="btn secondary" id="btn-admin" style="display:none;">Admin</button>
+                <button class="btn secondary" id="btn-orders">📄 Ordini</button>
+                <button class="btn secondary" id="btn-login">Login</button>
+                <button class="btn secondary" id="btn-logout" style="display:none;">Logout</button>
+                <button class="btn" id="btn-register">Registrati</button>
+              </div>
+            </div>
           </div>
-          <button class="btn secondary" id="btn-admin" style="display:none;">Admin</button>
-          <button class="btn secondary" id="btn-orders">📄 Ordini</button>
-          <button class="btn secondary" id="btn-login">Login</button>
-          <button class="btn secondary" id="btn-logout" style="display:none;">Logout</button>
-          <button class="btn" id="btn-register">Registrati</button>
-        </div>
-      </div>
 
-      <div class="top-bar-secondary">
-        <div class="daily-offer-wrapper">
-          <button class="btn daily-offer-btn" id="btn-daily-offer">
-            <span class="daily-offer-icon">
-              <img src="/assets/textures/coupon.png" alt="Coupon" style="width:18px;height:18px;object-fit:contain;" />
-            </span>
-            <span class="daily-offer-text">
-              <span class="daily-offer-line1">Offerta daily</span>
-              <span class="daily-offer-line2">prodotto del giorno in sconto</span>
-            </span>
-          </button>
+          <div class="hero-actions-row">
+            <div class="hero-offer">
+              <div class="daily-offer-wrapper">
+                <button class="btn daily-offer-btn" id="btn-daily-offer">
+                  <span class="daily-offer-icon">
+                    <img src="/assets/textures/coupon.png" alt="Coupon" style="width:18px;height:18px;object-fit:contain;" />
+                  </span>
+                  <span class="daily-offer-text">
+                    <span class="daily-offer-line1">Offerta daily</span>
+                    <span class="daily-offer-line2">prodotto del giorno in sconto</span>
+                  </span>
+                </button>
+              </div>
+            </div>
 
-          <div class="quick-actions-row">
-            <button
-              type="button"
-              class="quick-action-btn"
-              id="btn-quick-phone"
-              aria-label="Chiama Ormanet"
-            >
-              <img src="/assets/textures/phone.png" alt="Telefono" />
-            </button>
+            <div class="hero-contacts">
+              <div class="quick-actions-row">
+                <button
+                  type="button"
+                  class="quick-action-btn"
+                  id="btn-quick-phone"
+                  aria-label="Chiama Ormanet"
+                >
+                  <img src="/assets/textures/phone.png" alt="Telefono" />
+                </button>
 
-            <button
-              type="button"
-              class="quick-action-btn"
-              id="btn-quick-whats"
-              aria-label="WhatsApp Ormanet"
-            >
-              <img src="/assets/textures/whats.png" alt="WhatsApp" />
-            </button>
+                <button
+                  type="button"
+                  class="quick-action-btn"
+                  id="btn-quick-whats"
+                  aria-label="WhatsApp Ormanet"
+                >
+                  <img src="/assets/textures/whats.png" alt="WhatsApp" />
+                </button>
 
-            <div class="quick-action-mail-wrapper">
-              <button
-                type="button"
-                class="quick-action-btn"
-                id="btn-quick-mail"
-                aria-label="Invia email a Ormanet"
-              >
-                <img src="/assets/textures/mail.png" alt="Email" />
-              </button>
+                <div class="quick-action-mail-wrapper">
+                  <button
+                    type="button"
+                    class="quick-action-btn"
+                    id="btn-quick-mail"
+                    aria-label="Invia email a Ormanet"
+                  >
+                    <img src="/assets/textures/mail.png" alt="Email" />
+                  </button>
 
-              <div class="quick-mail-menu" id="quick-mail-menu">
-                <button type="button" data-email="oriana@ormanet.it">Commerciale Oriana</button>
-                <button type="button" data-email="ivan@ormanet.it">Commerciale Ivan</button>
-                <button type="button" data-email="david@ormanet.it">Commerciale David</button>
-                <button type="button" data-email="marketing@ormanet.it">Area Marketing</button>
+                  <div class="quick-mail-menu" id="quick-mail-menu">
+                    <button type="button" data-email="oriana@ormanet.it">Commerciale Oriana</button>
+                    <button type="button" data-email="ivan@ormanet.it">Commerciale Ivan</button>
+                    <button type="button" data-email="david@ormanet.it">Commerciale David</button>
+                    <button type="button" data-email="marketing@ormanet.it">Area Marketing</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="hero-controls">
+              <div id="top-right-controls">
+                <button id="btn-back" class="top-ctrl-btn">
+                  <span class="icon">←</span><span>Indietro</span>
+                </button>
+                <button id="btn-open-llm" class="top-ctrl-btn">
+                  <span class="icon">✦</span><span>Chat AI</span>
+                </button>
               </div>
             </div>
           </div>
         </div>
       </div>
     </div>
-  </div>
+  </section>
 
-  <div class="desktop-wrapper">
-    <div id="top-right-controls">
-      <button id="btn-back" class="top-ctrl-btn">
-        <span class="icon">←</span><span>Indietro</span>
-      </button>
-      <button id="btn-open-llm" class="top-ctrl-btn">
-        <span class="icon">✦</span><span>Chat AI</span>
-      </button>
-    </div>
-  </div>
-
-  <!-- BOTTOM PANEL -->
-  <div id="info-panel">
+  <main class="desktop-main-content">
+    <!-- BOTTOM PANEL -->
+    <div id="info-panel">
     <div class="desktop-wrapper">
       <div id="zoom-level">Livello: GALASSIA</div>
       <div id="location-path">Posizione: /</div>
@@ -1224,6 +1330,7 @@
     </div>
   </div>
   </div>
+  </main>
 
   <!-- MODAL: REGISTRAZIONE -->
   <div class="backdrop" id="sheet-register">
