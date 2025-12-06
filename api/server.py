@@ -769,47 +769,84 @@ async def notifications_poll(request: web.Request) -> web.Response:
 
 
 async def admin_clients_all(request: web.Request) -> web.Response:
-    clients: list[dict] = []
-    for client in list_clients():
-        payload = client_payload_from_record(client) or {}
-        payload.update(
-            {
-                "note": client.get("note"),
-                "promo_last_update": client.get("promo_last_update"),
-                "created_at": client.get("created_at"),
-                "updated_at": client.get("updated_at"),
-            }
+    logger.info("admin_clients_all from %s", request.remote)
+    try:
+        clients: list[dict] = []
+        for client in list_clients():
+            payload = client_payload_from_record(client) or {}
+            payload.update(
+                {
+                    "note": client.get("note"),
+                    "promo_last_update": client.get("promo_last_update"),
+                    "created_at": client.get("created_at"),
+                    "updated_at": client.get("updated_at"),
+                }
+            )
+            # Conserva i nomi legacy per compatibilità con il frontend admin
+            payload.setdefault("telefono", client.get("telefono"))
+            payload.setdefault("email", client.get("email"))
+            clients.append(payload)
+        logger.info("admin_clients_all -> %s clients", len(clients))
+        return web.json_response({"clients": clients})
+    except Exception:
+        logger.exception("admin_clients_all failed")
+        return web.json_response(
+            {"status": "error", "message": "cannot_list_clients"}, status=500
         )
-        # Conserva i nomi legacy per compatibilità con il frontend admin
-        payload.setdefault("telefono", client.get("telefono"))
-        payload.setdefault("email", client.get("email"))
-        clients.append(payload)
-
-    return web.json_response({"clients": clients})
 
 
 async def admin_clients_save(request: web.Request) -> web.Response:
-    body = await request.json()
-    saved = save_client(body)
-    linked = link_client_to_user_by_email(saved.get("email"))
-    if linked:
-        saved["user_id"] = linked.get("user_id")
-    log_event(
-        "client_save",
-        id=saved.get("id"),
-        ragione_sociale=saved.get("ragione_sociale") or saved.get("name"),
-        listino=saved.get("listino"),
-    )
-    return web.json_response(saved)
+    try:
+        body = await request.json()
+    except Exception:
+        logger.exception("admin_clients_save invalid JSON from %s", request.remote)
+        return web.json_response(
+            {"status": "error", "message": "invalid_json"}, status=400
+        )
+
+    logger.info("admin_clients_save from %s payload_keys=%s", request.remote, list(body.keys()))
+    try:
+        saved = save_client(body)
+        linked = link_client_to_user_by_email(saved.get("email"))
+        if linked:
+            saved["user_id"] = linked.get("user_id")
+        log_event(
+            "client_save",
+            id=saved.get("id"),
+            ragione_sociale=saved.get("ragione_sociale") or saved.get("name"),
+            listino=saved.get("listino"),
+        )
+        logger.info("admin_clients_save -> id=%s email=%s", saved.get("id"), saved.get("email"))
+        return web.json_response(saved)
+    except Exception:
+        logger.exception("admin_clients_save failed")
+        return web.json_response(
+            {"status": "error", "message": "cannot_save_client"}, status=500
+        )
 
 
 async def admin_clients_delete(request: web.Request) -> web.Response:
-    body = await request.json()
-    if body.get("id"):
-        delete_id = int(body["id"])
-        delete_client(delete_id)
-        log_event("client_delete", id=delete_id)
-    return web.json_response({"status": "ok"})
+    try:
+        body = await request.json()
+    except Exception:
+        logger.exception("admin_clients_delete invalid JSON from %s", request.remote)
+        return web.json_response(
+            {"status": "error", "message": "invalid_json"}, status=400
+        )
+
+    logger.info("admin_clients_delete from %s body=%s", request.remote, body)
+    try:
+        if body.get("id"):
+            delete_id = int(body["id"])
+            delete_client(delete_id)
+            log_event("client_delete", id=delete_id)
+            logger.info("admin_clients_delete -> removed %s", delete_id)
+        return web.json_response({"status": "ok"})
+    except Exception:
+        logger.exception("admin_clients_delete failed")
+        return web.json_response(
+            {"status": "error", "message": "cannot_delete_client"}, status=500
+        )
 
 
 async def admin_clients_import_promo(request: web.Request) -> web.Response:
@@ -1170,45 +1207,53 @@ async def admin_offers_save(request: web.Request) -> web.Response:
 
 
 async def admin_products_all(request: web.Request) -> web.Response:
-    raw_products = list_products()
-    products = []
-    for r in raw_products:
-        gallery = r.get("gallery") if isinstance(r, dict) else r.get("gallery", [])
-        if isinstance(gallery, str):
-            try:
-                gallery = json.loads(gallery)
-            except Exception:
-                gallery = []
+    logger.info("admin_products_all from %s", request.remote)
+    try:
+        raw_products = list_products()
+        products = []
+        for r in raw_products:
+            gallery = r.get("gallery") if isinstance(r, dict) else r.get("gallery", [])
+            if isinstance(gallery, str):
+                try:
+                    gallery = json.loads(gallery)
+                except Exception:
+                    gallery = []
 
-        products.append(
-            {
-                "sku": r.get("sku"),
-                "codice": r.get("codice"),
-                "name": r.get("name"),
-                "desc_html": r.get("desc_html") or r.get("description_html"),
-                "image_hd": r.get("image_hd"),
-                "image_thumb": r.get("image_thumb"),
-                "gallery": gallery or [],
-                "base_price": r.get("base_price"),
-                "unit": r.get("unit"),
-                "markup_riv10": r.get("markup_riv10"),
-                "markup_riv": r.get("markup_riv"),
-                "markup_dist": r.get("markup_dist"),
-                "price_distributore": r.get("price_distributore")
-                or r.get("price_dist"),
-                "price_rivenditore": r.get("price_rivenditore") or r.get("price_riv"),
-                "price_rivenditore10": r.get("price_rivenditore10")
-                or r.get("price_riv10"),
-                "qty_stock": r.get("qty_stock"),
-                "discount_dist_percent": r.get("discount_dist_percent"),
-                "discount_riv_percent": r.get("discount_riv_percent"),
-                "discount_riv10_percent": r.get("discount_riv10_percent"),
-                "status": r.get("status"),
-            }
+            products.append(
+                {
+                    "sku": r.get("sku"),
+                    "codice": r.get("codice"),
+                    "name": r.get("name"),
+                    "desc_html": r.get("desc_html") or r.get("description_html"),
+                    "image_hd": r.get("image_hd"),
+                    "image_thumb": r.get("image_thumb"),
+                    "gallery": gallery or [],
+                    "base_price": r.get("base_price"),
+                    "unit": r.get("unit"),
+                    "markup_riv10": r.get("markup_riv10"),
+                    "markup_riv": r.get("markup_riv"),
+                    "markup_dist": r.get("markup_dist"),
+                    "price_distributore": r.get("price_distributore")
+                    or r.get("price_dist"),
+                    "price_rivenditore": r.get("price_rivenditore") or r.get("price_riv"),
+                    "price_rivenditore10": r.get("price_rivenditore10")
+                    or r.get("price_riv10"),
+                    "qty_stock": r.get("qty_stock"),
+                    "discount_dist_percent": r.get("discount_dist_percent"),
+                    "discount_riv_percent": r.get("discount_riv_percent"),
+                    "discount_riv10_percent": r.get("discount_riv10_percent"),
+                    "status": r.get("status"),
+                }
+            )
+
+        products.sort(key=lambda p: (p.get("sku") or ""))
+        logger.info("admin_products_all -> %s products", len(products))
+        return web.json_response({"products": products})
+    except Exception:
+        logger.exception("admin_products_all failed")
+        return web.json_response(
+            {"status": "error", "message": "cannot_list_products"}, status=500
         )
-
-    products.sort(key=lambda p: (p.get("sku") or ""))
-    return web.json_response({"products": products})
 
 
 async def admin_price_list_import(request: web.Request) -> web.Response:
@@ -1369,41 +1414,68 @@ async def admin_price_list_status(request: web.Request) -> web.Response:
 
 
 async def admin_product_save(request: web.Request) -> web.Response:
-    body = await request.json()
-    product = {
-        "sku": body.get("sku") or str(uuid.uuid4()),
-        "name": body.get("name"),
-        "codice": body.get("codice"),
-        "image_hd": body.get("image_hd"),
-        "image_thumb": body.get("image_thumb"),
-        "gallery": body.get("gallery") or [],
-        "description_html": body.get("description_html") or body.get("desc_html"),
-        "base_price": body.get("base_price"),
-        "unit": body.get("unit"),
-        "markup_riv10": body.get("markup_riv10"),
-        "markup_riv": body.get("markup_riv"),
-        "markup_dist": body.get("markup_dist"),
-        "price_distributore": body.get("price_distributore"),
-        "price_rivenditore": body.get("price_rivenditore"),
-        "price_rivenditore10": body.get("price_rivenditore10"),
-        "qty_stock": body.get("qty_stock", 0),
-        "discount_dist_percent": body.get("discount_dist_percent", 0),
-        "discount_riv_percent": body.get("discount_riv_percent", 0),
-        "discount_riv10_percent": body.get("discount_riv10_percent", 0),
-        "status": body.get("status") or "attivo",
-    }
-    saved = upsert_product(product)
-    return web.json_response(saved)
+    try:
+        body = await request.json()
+    except Exception:
+        logger.exception("admin_product_save invalid JSON from %s", request.remote)
+        return web.json_response(
+            {"status": "error", "message": "invalid_json"}, status=400
+        )
+
+    logger.info(
+        "admin_product_save from %s sku=%s name=%s",
+        request.remote,
+        body.get("sku"),
+        body.get("name"),
+    )
+    try:
+        product = {
+            "sku": body.get("sku") or str(uuid.uuid4()),
+            "name": body.get("name"),
+            "codice": body.get("codice"),
+            "image_hd": body.get("image_hd"),
+            "image_thumb": body.get("image_thumb"),
+            "gallery": body.get("gallery") or [],
+            "description_html": body.get("description_html") or body.get("desc_html"),
+            "base_price": body.get("base_price"),
+            "unit": body.get("unit"),
+            "markup_riv10": body.get("markup_riv10"),
+            "markup_riv": body.get("markup_riv"),
+            "markup_dist": body.get("markup_dist"),
+            "price_distributore": body.get("price_distributore"),
+            "price_rivenditore": body.get("price_rivenditore"),
+            "price_rivenditore10": body.get("price_rivenditore10"),
+            "qty_stock": body.get("qty_stock", 0),
+            "discount_dist_percent": body.get("discount_dist_percent", 0),
+            "discount_riv_percent": body.get("discount_riv_percent", 0),
+            "discount_riv10_percent": body.get("discount_riv10_percent", 0),
+            "status": body.get("status") or "attivo",
+        }
+        saved = upsert_product(product)
+        logger.info("admin_product_save -> sku=%s", saved.get("sku"))
+        return web.json_response(saved)
+    except Exception:
+        logger.exception("admin_product_save failed")
+        return web.json_response(
+            {"status": "error", "message": "cannot_save_product"}, status=500
+        )
 
 
 async def admin_product_delete(request: web.Request) -> web.Response:
     sku = request.match_info.get("sku")
     if not sku:
         return web.json_response({"error": "missing_sku"}, status=400)
-    deleted = delete_product(sku)
-    if not deleted:
-        return web.json_response({"status": "not_found"}, status=404)
-    return web.json_response({"status": "ok"})
+    logger.info("admin_product_delete from %s sku=%s", request.remote, sku)
+    try:
+        deleted = delete_product(sku)
+        if not deleted:
+            return web.json_response({"status": "not_found"}, status=404)
+        return web.json_response({"status": "ok"})
+    except Exception:
+        logger.exception("admin_product_delete failed")
+        return web.json_response(
+            {"status": "error", "message": "cannot_delete_product"}, status=500
+        )
 
 
 def _enrich_daily_offer(record: Optional[dict]) -> Optional[dict]:

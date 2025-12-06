@@ -2148,8 +2148,30 @@
 </div>
 
 <script>
-  const BASE_URL = "http://127.0.0.1:8080"; // API ecom locale (Termux / backend thelight24)
-  const LLM_URL = "http://127.0.0.1:8081/completion";
+  const BASE_URL =
+    window.THELIGHT_BASE_URL || `${window.location.protocol}//${window.location.host}`;
+  const LLM_URL =
+    window.THELIGHT_LLM_URL || `${window.location.protocol}//${window.location.hostname}:8081/completion`;
+
+  const originalFetch = window.fetch.bind(window);
+  window.fetch = async (input, init = {}) => {
+    const method = (init && init.method) || "GET";
+    const targetUrl =
+      typeof input === "string"
+        ? new URL(input, window.location.origin).toString()
+        : input.url;
+    console.log("[fetch] →", method, targetUrl, init);
+    try {
+      const response = await originalFetch(input, init);
+      const clone = response.clone();
+      const text = await clone.text();
+      console.log("[fetch] ←", method, targetUrl, response.status, text?.slice(0, 500));
+      return response;
+    } catch (error) {
+      console.error("[fetch] ✖", method, targetUrl, error);
+      throw error;
+    }
+  };
 
   window.CURRENT_VIEW = window.CURRENT_VIEW || "user";
 
