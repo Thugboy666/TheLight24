@@ -1,0 +1,22 @@
+# Virtualenv
+.venv/
+
+# Cache Python
+__pycache__/
+*.pyc
+
+# Log e output vari
+logs/
+full_backend_log.txt
+*.log
+
+# File locali/temporanei
+cloudflared.deb
+token_cmd.sh
+
+# Modelli LLM pesanti
+llm/models/
+
+# DB locali (se li hai)
+*.sqlite3
+

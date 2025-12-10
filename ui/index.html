@@ -1,0 +1,1394 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <title>TheLight24 Universe – B2B Console</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <style>
+    :root { color-scheme: light; }
+    * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      margin: 0;
+      font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+      background: radial-gradient(circle at 20% 10%, #fff7eb 0%, #ffe7c7 40%, #fff7eb 70%);
+      color: #111827;
+      overflow: hidden;
+      height: 100dvh;
+    }
+    #app {
+      position: relative;
+      width: 100vw;
+      height: 100dvh;
+      max-height: 100dvh;
+      overflow: hidden;
+    }
+    #universe-canvas {
+      position: absolute;
+      inset: 0;
+      touch-action: none;
+      filter: saturate(0.65) brightness(0.9);
+      opacity: 0.9;
+    }
+
+    /* Top bar */
+    #top-bar {
+      position: absolute;
+      top: 0;
+      left: 0;
+      right: 0;
+      padding: 12px 14px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      background: #ffffff;
+      box-shadow: 0 6px 16px rgba(0,0,0,0.08);
+      z-index: 20;
+      gap: 10px;
+    }
+    #brand {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+    #brand-title {
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      white-space: nowrap;
+      color: #ff7b00;
+    }
+    #brand-sub {
+      font-size: 11px;
+      opacity: 0.6;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      max-width: 180px;
+    }
+    #user-panel {
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      flex-shrink: 0;
+    }
+    .pill {
+      font-size: 11px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      border: 1px solid rgba(17,24,39,0.08);
+      background: #f3f4f6;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      white-space: nowrap;
+      color: #111827;
+    }
+    .pill span.label { opacity: 0.7; }
+    .btn {
+      font-size: 12px;
+      border-radius: 12px;
+      padding: 10px 14px;
+      border: 1px solid transparent;
+      color: #ffffff;
+      background: #ff7b00;
+      cursor: pointer;
+      white-space: nowrap;
+      font-weight: 600;
+    }
+    .btn.secondary {
+      background: #ffffff;
+      color: #111827;
+      border-color: rgba(17,24,39,0.08);
+      box-shadow: inset 0 0 0 1px rgba(17,24,39,0.04);
+    }
+    .btn:active { transform: scale(0.98); }
+
+    @media (max-width: 480px) {
+      #top-bar { padding: 10px 12px; }
+      #brand-title { font-size: 14px; }
+      #brand-sub { display: none; }
+      #user-panel { gap: 6px; }
+      #btn-cart, #btn-login, #btn-register {
+        padding-inline: 10px;
+        font-size: 12px;
+        height: 40px;
+      }
+      #tier-pill { display: none; }
+    }
+
+    /* Bottom info panel */
+    #info-panel {
+      position: absolute;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      padding: 14px 12px 16px;
+      z-index: 15;
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+      background: linear-gradient(to top, rgba(255,255,255,0.92), rgba(255,255,255,0.88), rgba(255,255,255,0.65));
+      backdrop-filter: blur(6px);
+      border-top-left-radius: 16px;
+      border-top-right-radius: 16px;
+      box-shadow: 0 -6px 20px rgba(0,0,0,0.06);
+    }
+    #panel-header {
+      display: flex;
+      gap: 10px;
+      align-items: flex-start;
+      flex-wrap: wrap;
+      justify-content: space-between;
+    }
+    #panel-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    #zoom-level { font-size: 12px; color: #111827; font-weight: 600; }
+    #location-path { font-size: 12px; color: #374151; }
+    #hint { font-size: 12px; color: #6b7280; }
+    #mode-switch {
+      display: inline-flex;
+      background: #f3f4f6;
+      border-radius: 12px;
+      padding: 4px;
+      gap: 4px;
+      border: 1px solid rgba(17,24,39,0.08);
+    }
+    .mode-btn {
+      border: 0;
+      background: transparent;
+      padding: 8px 12px;
+      border-radius: 10px;
+      font-size: 12px;
+      font-weight: 600;
+      color: #6b7280;
+      cursor: pointer;
+    }
+    .mode-btn.active {
+      background: #ffffff;
+      color: #ff7b00;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.06);
+    }
+
+    /* NUOVO LAYOUT LISTA CATEGORIE B2B */
+    #b2b-list {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+    .b2b-card {
+      background: #ffffff;
+      border-radius: 14px;
+      border: 1px solid rgba(17,24,39,0.08);
+      box-shadow: 0 8px 18px rgba(0,0,0,0.04);
+      padding: 12px;
+      display: flex;
+      gap: 12px;
+      align-items: center;
+    }
+    .b2b-card .thumb {
+      width: 48px;
+      height: 48px;
+      border-radius: 12px;
+      background: #f3f4f6;
+      border: 1px solid rgba(17,24,39,0.06);
+      display: grid;
+      place-items: center;
+      color: #ff7b00;
+      font-size: 18px;
+      flex-shrink: 0;
+    }
+    .b2b-card .content { flex: 1; min-width: 0; }
+    .b2b-card .title { font-size: 15px; font-weight: 700; color: #111827; margin-bottom: 4px; }
+    .b2b-card .subtitle { font-size: 12px; color: #6b7280; margin-bottom: 6px; }
+    .b2b-card .meta { font-size: 12px; color: #374151; margin-bottom: 6px; }
+    .pillline { display: flex; gap: 6px; flex-wrap: wrap; }
+    .pillline .pill-tag {
+      background: #f3f4f6;
+      border: 1px solid rgba(17,24,39,0.08);
+      color: #374151;
+      padding: 4px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 600;
+    }
+    .status-badge-simple {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 8px;
+      border-radius: 10px;
+      font-size: 11px;
+      background: #ecfdf3;
+      color: #166534;
+      border: 1px solid rgba(22,101,52,0.2);
+    }
+    .status-badge-simple.off { background: #f3f4f6; color: #6b7280; border-color: rgba(17,24,39,0.08); }
+    .b2b-card .actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; }
+    .b2b-card .actions .btn { padding-inline: 12px; font-size: 12px; }
+
+    /* Entity card */
+    #entity-card {
+      margin-top: 4px;
+      background: #ffffff;
+      border-radius: 16px;
+      padding: 12px;
+      border: 1px solid rgba(17,24,39,0.08);
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+    }
+    #entity-header { display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+    #entity-type {
+      font-size: 11px;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: #6b7280;
+      font-weight: 700;
+    }
+    #entity-title { font-size: 16px; font-weight: 800; color: #111827; }
+    #entity-meta { font-size: 12px; color: #374151; }
+    #entity-rating { font-size: 12px; color: #6b7280; }
+    #entity-media {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid rgba(17,24,39,0.06);
+      background: #f9fafb;
+      height: 140px;
+      display: grid;
+      place-items: center;
+      color: #9ca3af;
+      font-size: 24px;
+    }
+    #entity-price-line {
+      display: flex;
+      align-items: baseline;
+      gap: 8px;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      border-top: 1px dashed rgba(17,24,39,0.08);
+      padding-top: 8px;
+    }
+    #entity-price {
+      font-size: 18px;
+      font-weight: 800;
+      color: #16a34a;
+    }
+    #entity-price small { font-size: 12px; color: #6b7280; font-weight: 600; }
+    #entity-qty {
+      width: 70px;
+      border-radius: 12px;
+      padding: 6px 8px;
+      border: 1px solid rgba(17,24,39,0.12);
+      background: #ffffff;
+      color: #111827;
+      font-size: 12px;
+    }
+    #entity-tags {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
+      margin-top: 2px;
+    }
+    .tag {
+      border-radius: 999px;
+      font-size: 11px;
+      padding: 4px 8px;
+      background: #f3f4f6;
+      border: 1px solid rgba(17,24,39,0.08);
+      color: #374151;
+      font-weight: 600;
+    }
+    .offer-box {
+      margin-top: 6px;
+      padding: 10px;
+      border-radius: 12px;
+      background: linear-gradient(120deg, rgba(255,123,0,0.12), rgba(255,123,0,0.06));
+      border: 1px dashed rgba(255,123,0,0.35);
+      color: #8a3b00;
+      display: none;
+    }
+    .offer-box h4 { margin: 0 0 6px; font-size: 14px; font-weight: 800; }
+    .offer-box p { margin: 0 0 8px; font-size: 12px; color: #7c2d12; }
+    .offer-box label { display: block; font-size: 12px; color: #7c2d12; margin-bottom: 4px; }
+    .offer-box input { width: 100%; padding: 8px 10px; border-radius: 10px; border: 1px solid rgba(17,24,39,0.12); background: #fffaf5; }
+    .offer-period { font-size: 11px; color: #92400e; margin-top: 6px; display: block; }
+    #entity-actions { display: flex; flex-direction: column; gap: 6px; }
+    #entity-admin-actions {
+      display: none;
+      justify-content: flex-end;
+      margin-top: 4px;
+    }
+
+    /* Floating nav buttons */
+    #nav-buttons {
+      position: absolute;
+      right: 12px;
+      bottom: 120px;
+      z-index: 16;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .icon-btn {
+      border-radius: 12px;
+      border: 1px solid rgba(17,24,39,0.08);
+      background: rgba(255,255,255,0.95);
+      color: #111827;
+      font-size: 13px;
+      padding: 10px 12px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      box-shadow: 0 8px 20px rgba(0,0,0,0.05);
+    }
+    .icon-btn span { font-size: 14px; }
+
+    /* Modal / sheets */
+    .backdrop {
+      position: absolute;
+      inset: 0;
+      background: rgba(17,24,39,0.55);
+      display: none;
+      align-items: flex-end;
+      justify-content: center;
+      z-index: 50;
+    }
+    .sheet {
+      width: 100%;
+      max-height: 88dvh;
+      background: #ffffff;
+      border-radius: 18px 18px 0 0;
+      padding: 12px 16px 16px;
+      border: 1px solid rgba(17,24,39,0.08);
+      overflow-y: auto;
+      color: #111827;
+    }
+    .sheet h2 {
+      font-size: 16px;
+      margin: 0 0 6px;
+    }
+    .sheet p {
+      font-size: 12px;
+      margin: 0 0 10px;
+      color: #4b5563;
+    }
+    .field {
+      margin-bottom: 8px;
+    }
+    .field label {
+      font-size: 12px;
+      display: block;
+      margin-bottom: 4px;
+      font-weight: 600;
+    }
+    .field input,
+    .field select,
+    .field textarea {
+      width: 100%;
+      padding: 10px 12px;
+      border-radius: 12px;
+      border: 1px solid rgba(17,24,39,0.12);
+      background: #f9fafb;
+      color: #111827;
+      font-size: 13px;
+    }
+    .field textarea {
+      min-height: 60px;
+      resize: vertical;
+    }
+    .field small {
+      font-size: 11px;
+      color: #6b7280;
+    }
+    .sheet-actions {
+      display: flex;
+      justify-content: flex-end;
+      gap: 8px;
+      margin-top: 10px;
+    }
+
+    .two-cols {
+      display: flex;
+      gap: 10px;
+    }
+    .two-cols .field { flex: 1; }
+    @media (max-width: 640px) {
+      .two-cols { flex-direction: column; }
+    }
+
+    .html-preview {
+      border-radius: 12px;
+      border: 1px solid rgba(17,24,39,0.12);
+      padding: 10px 12px;
+      font-size: 12px;
+      background: #f9fafb;
+      max-height: 160px;
+      overflow-y: auto;
+    }
+
+    /* Cart */
+    #cart-list {
+      font-size: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-top: 6px;
+    }
+    .cart-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 6px;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(17,24,39,0.08);
+    }
+    .cart-main { flex: 1; }
+    .cart-sku { font-size: 11px; color: #6b7280; }
+    .cart-qty { font-size: 12px; color: #374151; }
+    .cart-price { font-size: 13px; font-weight: 700; color: #111827; }
+    #cart-total {
+      margin-top: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      text-align: right;
+      color: #111827;
+    }
+
+    #toast {
+      position: absolute;
+      bottom: 90px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: #16a34a;
+      color: #ecfdf3;
+      font-size: 12px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      display: none;
+      z-index: 60;
+      box-shadow: 0 8px 18px rgba(0,0,0,0.1);
+    }
+
+    /* LLM CHAT SHEET */
+    #sheet-llm-chat .sheet {
+      border-top-left-radius: 18px;
+      border-top-right-radius: 18px;
+    }
+    #llm-chat-log {
+      border-radius: 12px;
+      border: 1px solid rgba(17,24,39,0.12);
+      padding: 10px 12px;
+      font-size: 12px;
+      background: #f9fafb;
+      max-height: 260px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .llm-msg {
+      padding: 6px 8px;
+      border-radius: 10px;
+      max-width: 92%;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+    }
+    .llm-msg.user {
+      align-self: flex-end;
+      background: rgba(255,123,0,0.12);
+      border: 1px solid rgba(255,123,0,0.25);
+      color: #8a3b00;
+    }
+    .llm-msg.bot {
+      align-self: flex-start;
+      background: #ffffff;
+      border: 1px solid rgba(17,24,39,0.08);
+      color: #111827;
+    }
+    #llm-status {
+      font-size: 11px;
+      color: #6b7280;
+      margin-top: 4px;
+    }
+    #llm-chat-input-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 8px;
+    }
+    #llm-chat-input {
+      flex: 1;
+      padding: 10px 12px;
+      border-radius: 999px;
+      border: 1px solid rgba(17,24,39,0.12);
+      background: #ffffff;
+      color: #111827;
+      font-size: 12px;
+    }
+    #btn-llm-send {
+      font-size: 12px;
+      border-radius: 12px;
+      padding: 10px 14px;
+      border: 0;
+      background: #16a34a;
+      color: #ecfdf3;
+      cursor: pointer;
+    }
+
+    /* Controlli globali sopra tutto */
+    #global-controls {
+      position: absolute;
+      top: 70px; /* sotto la top-bar per non sovrapporsi ai pulsanti auth */
+      right: 12px;
+      z-index: 80; /* sopra top-bar, nav, sheet normali */
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+    }
+
+    @media (max-width: 640px) {
+      #global-controls {
+        top: 76px;
+        right: 10px;
+        left: 10px;
+        justify-content: flex-end;
+      }
+    }
+
+    /* Chat log */
+    .chat-log {
+      border-radius: 12px;
+      border: 1px solid rgba(17,24,39,0.12);
+      background: #f9fafb;
+      padding: 10px;
+      font-size: 12px;
+      max-height: 260px;
+      overflow-y: auto;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+
+    .chat-msg {
+      padding: 8px 10px;
+      border-radius: 10px;
+      max-width: 100%;
+      white-space: pre-wrap;
+      word-wrap: break-word;
+      background: #ffffff;
+      border: 1px solid rgba(17,24,39,0.08);
+    }
+
+    .chat-user {
+      align-self: flex-end;
+      background: rgba(255,123,0,0.1);
+    }
+
+    .chat-assistant {
+      align-self: flex-start;
+      background: #ffffff;
+      border: 1px solid rgba(17,24,39,0.08);
+    }
+
+    .chat-system {
+      align-self: center;
+      background: transparent;
+      color: #9ca3af;
+      font-size: 11px;
+    }
+
+    #chat-status-row {
+      display: flex;
+      justify-content: flex-end;
+      margin-bottom: 6px;
+    }
+
+    .status-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
+      font-size: 11px;
+      border: 1px solid rgba(17,24,39,0.12);
+      background: #f9fafb;
+      color: #111827;
+    }
+
+    .status-idle {
+      border-color: rgba(148,163,184,0.4);
+      background: rgba(148,163,184,0.15);
+    }
+
+    .status-pending {
+      border-color: rgba(234,179,8,0.35);
+      background: rgba(234,179,8,0.15);
+      color: #a16207;
+    }
+
+    .status-sent {
+      border-color: rgba(34,197,94,0.3);
+      background: rgba(34,197,94,0.15);
+      color: #166534;
+    }
+
+    /* Floating tags: compattate su mobile */
+    .floating-tag { font-size: 11px; }
+    @media (max-width: 640px) {
+      .floating-tag span:not(:first-child) { display: none; }
+      .floating-tag { opacity: 0.65; }
+    }
+  </style>
+  </style>
+  <script src="https://unpkg.com/three@0.160.0/build/three.min.js"></script>
+</head>
+<body>
+<div id="app">
+  <canvas id="universe-canvas"></canvas>
+
+  <!-- TOP BAR -->
+  <div id="top-bar">
+    <div id="brand">
+      <div id="brand-title">THELIGHT24 UNIVERSE</div>
+      <div id="brand-sub">Galaxy of Shops • Touch to navigate</div>
+    </div>
+    <div id="user-panel">
+      <div class="pill" id="tier-pill">
+        <span class="label">Listino:</span>
+        <span id="tier-label">ospite</span>
+      </div>
+      <button class="btn secondary" id="btn-cart">Carrello (0)</button>
+      <button class="btn secondary" id="btn-login">Login</button>
+      <button class="btn" id="btn-register">Registrati</button>
+    </div>
+  </div>
+
+  <!-- TOP RIGHT: INDIETRO + CHAT AI -->
+<!-- CONTROLLI GLOBALI (sempre visibili) -->
+  <div id="global-controls">
+    <button class="btn secondary" id="btn-back">← Indietro</button>
+    <button class="btn" id="btn-chat-ai">✦ Chat AI</button>
+  </div>
+
+  <!-- BOTTOM PANEL -->
+  <div id="info-panel">
+    <div id="panel-header">
+      <div id="panel-meta">
+        <div id="zoom-level">Livello: GALASSIA</div>
+        <div id="location-path">Posizione: /</div>
+        <div id="hint">Tocca una categoria per aprire il listino. Pinch per ruotare la galassia.</div>
+      </div>
+      <div id="mode-switch">
+        <button class="mode-btn active" data-mode="simple" id="btn-mode-simple">Modo semplice</button>
+        <button class="mode-btn" data-mode="galaxy" id="btn-mode-galaxy">Vista galassia</button>
+      </div>
+    </div>
+
+    <!-- NUOVO LAYOUT LISTA CATEGORIE B2B -->
+    <div id="b2b-list"></div>
+
+    <div id="entity-card">
+      <div id="entity-header">
+        <div>
+          <div id="entity-type"></div>
+          <div id="entity-title"></div>
+          <div id="entity-meta"></div>
+        </div>
+        <div id="entity-rating"></div>
+      </div>
+      <div id="entity-media">Visuale prodotto / categoria</div>
+      <div id="entity-tags"></div>
+      <div id="entity-offer-box" class="offer-box">
+        <h4>Promo Natale – Box regalo</h4>
+        <p>Offerta dedicata per ordini multiprodotto con confezione regalo inclusa.</p>
+        <label for="promo-sim">Inserisci l’importo ordine per vedere lo sconto</label>
+        <input id="promo-sim" type="number" placeholder="Es. 500 €" />
+        <span class="offer-period" id="promo-period">Periodo promo: --</span>
+      </div>
+      <div id="entity-price-line">
+        <div id="entity-price"></div>
+        <div id="entity-qty-wrapper" style="display:none; align-items:center; gap:8px;">
+          <span style="font-size:12px;opacity:0.7;">Qtà</span>
+          <input id="entity-qty" type="number" min="1" step="1" value="1" />
+          <button class="btn" id="btn-add-cart" style="font-size:12px;padding-inline:12px;">+ Carrello</button>
+        </div>
+      </div>
+      <div id="entity-actions">
+        <button class="btn" id="btn-entity-primary">Vedi prodotti</button>
+      </div>
+      <div id="entity-admin-actions">
+        <button class="btn secondary" id="btn-edit-product" style="font-size:12px;padding-inline:12px;">Modifica scheda</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- FLOATING NAV BUTTONS -->
+  <div id="nav-buttons">
+    <button class="icon-btn" id="btn-up">
+      <span>↑</span><span>Livello su</span>
+    </button>
+  </div>
+
+  <!-- MODAL: REGISTRAZIONE -->
+  <div class="backdrop" id="sheet-register">
+    <div class="sheet">
+      <h2>Registrazione B2B / B2C</h2>
+      <p>Per vedere i prezzi devi creare un account. Dopo la verifica ti assegneremo il listino commerciale più adatto al tuo profilo.</p>
+
+      <div class="field">
+        <label>Sei un’azienda o un privato?</label>
+        <select id="reg-type">
+          <option value="azienda">Azienda</option>
+          <option value="privato">Privato</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Ragione sociale / Nome completo</label>
+        <input id="reg-name" placeholder="Es. Ormanet S.r.l. / Mario Rossi" />
+      </div>
+
+      <div class="field">
+        <label>Partita IVA</label>
+        <input id="reg-piva" placeholder="ITXXXXXXXXXXX" />
+        <small>Obbligatoria per aziende. Per privati puoi lasciare vuoto.</small>
+      </div>
+
+      <div class="field">
+        <label>Codice SDI / PEC</label>
+        <input id="reg-sdi" placeholder="Codice destinatario o PEC" />
+      </div>
+
+      <div class="field">
+        <label>Regime fiscale</label>
+        <select id="reg-regime">
+          <option value="ordinario">Ordinario</option>
+          <option value="forfettario">Forfettario</option>
+          <option value="minimi">Regime dei minimi</option>
+          <option value="privato">Privato / no P.IVA</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>Indirizzo completo attività</label>
+        <textarea id="reg-address" placeholder="Via, numero civico, CAP, città, provincia, nazione"></textarea>
+      </div>
+
+      <div class="field">
+        <label>Email</label>
+        <input id="reg-email" type="email" placeholder="esempio@azienda.it" />
+      </div>
+
+      <div class="field">
+        <label>Telefono / WhatsApp</label>
+        <input id="reg-phone" placeholder="+39…" />
+      </div>
+
+      <div class="field">
+        <label>Come ci hai conosciuti?</label>
+        <input id="reg-source" placeholder="Google, passaparola, Amazon, fiera, agente, ecc." />
+      </div>
+
+      <div class="field">
+        <label>Link o note visura camerale</label>
+        <textarea id="reg-visura" placeholder="URL alla visura o note (es. allegata via email, disponibile su richiesta)."></textarea>
+      </div>
+
+      <div class="field">
+        <label>Metodo di pagamento preferito</label>
+        <select id="reg-payment">
+          <option value="bonifico">Bonifico bancario (default)</option>
+          <option value="contrassegno">Contrassegno</option>
+          <option value="carta">Carta / POS virtuale</option>
+          <option value="altro">Altro (da concordare)</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>
+          <input type="checkbox" id="reg-terms" />
+          Accetto termini & condizioni, informativa privacy e condizioni di pagamento.
+        </label>
+      </div>
+
+      <div class="sheet-actions">
+        <button class="btn secondary" id="btn-reg-cancel">Annulla</button>
+        <button class="btn" id="btn-reg-submit">Crea account</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: LOGIN -->
+  <div class="backdrop" id="sheet-login">
+    <div class="sheet">
+      <h2>Login</h2>
+      <p>Accedi con la tua email e la password impostata dopo l’attivazione account.</p>
+
+      <div class="field">
+        <label>Email</label>
+        <input id="login-email" type="email" />
+      </div>
+      <div class="field">
+        <label>Password</label>
+        <input id="login-password" type="password" />
+      </div>
+
+      <div class="sheet-actions">
+        <button class="btn secondary" id="btn-login-cancel">Annulla</button>
+        <button class="btn" id="btn-login-submit">Entra</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CARRELLO -->
+  <div class="backdrop" id="sheet-cart">
+    <div class="sheet">
+      <h2>Carrello</h2>
+      <p>Riepilogo articoli selezionati. L’ordine viene inviato come richiesta al reparto commerciale.</p>
+
+      <div id="cart-list"></div>
+      <div id="cart-total">Totale: 0,00 €</div>
+
+      <div class="sheet-actions">
+        <button class="btn secondary" id="btn-cart-clear">Svuota</button>
+        <button class="btn" id="btn-cart-checkout">Invia richiesta</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CHAT LLM -->
+  <div class="backdrop" id="sheet-chat-ai">
+    <div class="sheet">
+      <h2>Chat AI locale</h2>
+      <p>Assistente locale per domande in linguaggio naturale.</p>
+
+      <div id="chat-log" class="chat-log">
+        <!-- messaggi -->
+      </div>
+
+      <div id="chat-status-row">
+        <span id="chat-status" class="status-badge status-idle">Non inviato</span>
+      </div>
+
+      <div class="field">
+        <label>Messaggio</label>
+        <textarea id="chat-input" placeholder="Scrivi qui la tua domanda..."></textarea>
+      </div>
+
+      <div class="sheet-actions">
+        <button class="btn secondary" id="btn-chat-close">Chiudi</button>
+        <button class="btn" id="btn-chat-send">Invia</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: PRODUCT EDITOR -->
+  <div class="backdrop" id="sheet-product-editor">
+    <div class="sheet">
+      <h2>Editor scheda prodotto</h2>
+      <p>Modifica contenuti, immagini HD e listini partendo dal listino madre.</p>
+
+      <div class="two-cols">
+        <div class="field">
+          <label>SKU (bloccato)</label>
+          <input id="prod-sku" readonly />
+        </div>
+        <div class="field">
+          <label>Nome prodotto</label>
+          <input id="prod-name" />
+        </div>
+      </div>
+
+      <div class="two-cols">
+        <div class="field">
+          <label>URL immagine HD principale</label>
+          <input id="prod-image-hd" placeholder="https://..." />
+        </div>
+        <div class="field">
+          <label>URL immagine thumbnail</label>
+          <input id="prod-image-thumb" placeholder="https://..." />
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Gallery immagini (una URL per riga)</label>
+        <textarea id="prod-gallery" placeholder="https://img1...\nhttps://img2..."></textarea>
+      </div>
+
+      <div class="field">
+        <label>Descrizione HTML (sorgente)</label>
+        <textarea id="prod-desc-html" placeholder="<h2>Caratteristiche</h2>..."></textarea>
+      </div>
+      <div class="field">
+        <label>Preview descrizione</label>
+        <div id="prod-desc-preview" class="html-preview"></div>
+      </div>
+
+      <h2>Listini & ricarichi</h2>
+      <p>Imposta il listino madre e le % di ricarico per i listini figli. I prezzi vengono ricalcolati automaticamente.</p>
+
+      <div class="two-cols">
+        <div class="field">
+          <label>Prezzo listino madre (base)</label>
+          <input id="prod-base-price" type="number" min="0" step="0.01" />
+        </div>
+        <div class="field">
+          <label>Unità di misura (solo nota)</label>
+          <input id="prod-unit" placeholder="es. pz, risma, conf, kg" />
+        </div>
+      </div>
+
+      <div class="two-cols">
+        <div class="field">
+          <label>% ricarico listino "rivenditore +10%"</label>
+          <input id="prod-markup-riv10" type="number" step="0.1" />
+          <small>Es. 10 = +10% sul listino madre.</small>
+        </div>
+        <div class="field">
+          <label>Prezzo calcolato rivenditore +10%</label>
+          <input id="prod-price-riv10" type="text" readonly />
+        </div>
+      </div>
+
+      <div class="two-cols">
+        <div class="field">
+          <label>% ricarico listino "rivenditore"</label>
+          <input id="prod-markup-riv" type="number" step="0.1" />
+          <small>Es. 20 = +20% sul listino madre.</small>
+        </div>
+        <div class="field">
+          <label>Prezzo calcolato rivenditore</label>
+          <input id="prod-price-riv" type="text" readonly />
+        </div>
+      </div>
+
+      <div class="two-cols">
+        <div class="field">
+          <label>% ricarico listino "distributore"</label>
+          <input id="prod-markup-dist" type="number" step="0.1" />
+          <small>Puoi anche usare valori negativi per sconti (-5 = -5%).</small>
+        </div>
+        <div class="field">
+          <label>Prezzo calcolato distributore</label>
+          <input id="prod-price-dist" type="text" readonly />
+        </div>
+      </div>
+
+      <div class="sheet-actions">
+        <button class="btn secondary" id="btn-prod-cancel">Annulla</button>
+        <button class="btn" id="btn-prod-save">Salva scheda</button>
+      </div>
+    </div>
+  </div>
+  <!-- MODAL: LLM CHAT -->
+   <div class="backdrop" id="sheet-llm-chat">
+     <div class="sheet">
+       <h2>AI Assistant – TheLight24</h2>
+       <p>Chat locale con l’assistente AI in esecuzione sul dispositivo.</p>
+ 
+       <div id="llm-chat-log"></div>
+       <div id="llm-status"></div>
+ 
+       <div id="llm-chat-input-row">
+         <input id="llm-chat-input" type="text" placeholder="Scrivi una domanda (es. suggerimento prodotti HP)..." />
+         <button id="btn-llm-send">Invia</button>
+       </div>
+ 
+       <div class="sheet-actions">
+         <button class="btn secondary" id="btn-llm-close">Chiudi</button>
+       </div>
+     </div>
+   </div>
+ 
+   <div id="toast"></div>
+ </div>
+ 
+ <script>
+    const BASE_URL = window.location.origin || "http://127.0.0.1:8080"; // stesso host/porta per backend ecom
+    const LLM_URL  = `${BASE_URL}/api/llm/chat`; // server Phi-3 su Termux
+ 
+   let currentUser = {
+     logged: false,
+     tier: "ospite", // ospite | rivenditore10 | rivenditore | distributore
+     name: null,
+   };
+ 
+   let zoomLevel = "GALASSIA";
+   let currentPath = [];
+   let currentSystem = null;
+   let currentCategory = null;
+   let currentSubcategory = null;
+   let currentEntity = null;     // sistema / categoria / prodotto corrente
+   let currentEntityType = null; // 'system' | 'category' | 'product'
+ 
+    let cart = [];
+    let currentProductPrice = 0;
+    let simpleMode = window.matchMedia('(max-width: 640px)').matches;
+
+    // NUOVO LAYOUT LISTA CATEGORIE B2B
+    const systems = [
+      {
+        name: "Ormanet B2B",
+        subtitle: "Sistema e-commerce",
+        meta: "Nodi: 10 categorie",
+        tags: ["B2B", "Smart purchasing"],
+        discount: true,
+      }
+    ];
+    const categories = [
+      { name: "Batterie industriali", tagLine: "energia", discount: true, icon: "🔋" },
+      { name: "Cancelleria ufficio", tagLine: "ufficio", discount: false, icon: "🗂️" },
+      { name: "Carta per stampa", tagLine: "printing", discount: true, icon: "📄" },
+      { name: "Hardware e server", tagLine: "datacenter", discount: false, icon: "🖥️" },
+    ];
+    const sampleProduct = {
+      name: "Box regalo Natale Premium",
+      meta: "SKU: BOX-NOEL • Listino: corporate",
+      price: "129,00 €",
+      tags: ["Box regalo", "Premium", "Natale"],
+      promoPeriod: "Validità: 1-24 dicembre",
+    };
+
+    const canvas = document.getElementById("universe-canvas");
+    const tierLabel = document.getElementById("tier-label");
+    const zoomLevelLabel = document.getElementById("zoom-level");
+    const locationPathLabel = document.getElementById("location-path");
+    const hint = document.getElementById("hint");
+    const toast = document.getElementById("toast");
+     const chatStatus = document.getElementById("chat-status");
+
+    const b2bList = document.getElementById("b2b-list");
+    const btnModeSimple = document.getElementById("btn-mode-simple");
+    const btnModeGalaxy = document.getElementById("btn-mode-galaxy");
+    const entityMedia = document.getElementById("entity-media");
+    const btnEntityPrimary = document.getElementById("btn-entity-primary");
+    const offerBox = document.getElementById("entity-offer-box");
+    const promoPeriod = document.getElementById("promo-period");
+
+    const btnChat = document.getElementById("btn-chat-ai");
+    const btnChatClose = document.getElementById("btn-chat-close");
+    const btnChatSend = document.getElementById("btn-chat-send");
+    const chatInput = document.getElementById("chat-input");
+    const sheetChat = document.getElementById("sheet-chat-ai");
+    const sheetRegister = document.getElementById("sheet-register");
+    const sheetLogin = document.getElementById("sheet-login");
+    const sheetCart = document.getElementById("sheet-cart");
+    const sheetProduct = document.getElementById("sheet-product-editor");
+    const btnBack = document.getElementById("btn-back");
+
+    function showSheet(sheet) {
+      if (!sheet) return;
+      sheet.style.display = "flex";
+    }
+    function hideSheet(sheet) {
+      if (!sheet) return;
+      sheet.style.display = "none";
+    }
+
+    function appendChatMessage(role, text) {
+      const log = document.getElementById("chat-log");
+      if (!log) return;
+      const el = document.createElement("div");
+      el.className = `chat-msg chat-${role}`;
+      el.textContent = text;
+      log.appendChild(el);
+      log.scrollTop = log.scrollHeight;
+    }
+
+    function showToast(msg) {
+      if (!toast) return;
+      toast.textContent = msg;
+      toast.style.display = "block";
+      setTimeout(() => { toast.style.display = "none"; }, 2000);
+    }
+
+    function updateLabels() {
+      zoomLevelLabel.textContent = `Livello: ${zoomLevel}`;
+      locationPathLabel.textContent = `Posizione: /${currentPath.join(" / ")}`;
+    }
+
+    function updateUserUI() {
+      if (tierLabel) tierLabel.textContent = currentUser.tier;
+    }
+
+    function resetToGalaxy() {
+      zoomLevel = "GALASSIA";
+      currentPath = [];
+      renderSimpleList();
+      updateLabels();
+    }
+
+    function openProductEditor() {
+      showSheet(sheetProduct);
+    }
+
+    function renderEntity(entity, type) {
+      if (!entityCard) return;
+      currentEntity = entity;
+      currentEntityType = type;
+      document.getElementById("entity-type").textContent = type === "product" ? "PRODOTTO" : type === "category" ? "CATEGORIA" : "SISTEMA";
+      document.getElementById("entity-title").textContent = entity?.name || "";
+      document.getElementById("entity-meta").textContent = entity?.meta || "";
+      document.getElementById("entity-rating").textContent = entity?.rating || "";
+      entityMedia.textContent = entity?.mediaLabel || "Visuale prodotto / categoria";
+      const priceEl = document.getElementById("entity-price");
+      const qtyWrapper = document.getElementById("entity-qty-wrapper");
+      const primaryBtn = btnEntityPrimary;
+      priceEl.textContent = "";
+      if (type === "product" && currentUser.logged) {
+        priceEl.innerHTML = `${entity.price || "--"} <small>+ IVA</small>`;
+        qtyWrapper.style.display = "flex";
+        primaryBtn.textContent = "Aggiungi al carrello";
+      } else if (type === "product") {
+        priceEl.textContent = "Registrati per vedere i prezzi B2B";
+        qtyWrapper.style.display = "none";
+        primaryBtn.textContent = "Registrati";
+      } else {
+        priceEl.textContent = currentUser.logged ? "Apri listino dedicato" : "Entra per prezzi riservati";
+        qtyWrapper.style.display = "none";
+        primaryBtn.textContent = "Vedi prodotti";
+      }
+
+      const tagsEl = document.getElementById("entity-tags");
+      tagsEl.innerHTML = "";
+      (entity?.tags || []).forEach(t => {
+        const pill = document.createElement("span");
+        pill.className = "tag";
+        pill.textContent = t;
+        tagsEl.appendChild(pill);
+      });
+
+      if (entity?.promoPeriod) {
+        offerBox.style.display = "block";
+        promoPeriod.textContent = entity.promoPeriod;
+      } else {
+        offerBox.style.display = "none";
+      }
+
+      entityCard.style.display = "flex";
+    }
+
+    function renderSimpleList() {
+      if (!b2bList) return;
+      b2bList.innerHTML = "";
+
+      if (zoomLevel === "GALASSIA") {
+        systems.forEach(sys => {
+          const row = document.createElement("div");
+          row.className = "b2b-card";
+          row.innerHTML = `
+            <div class="thumb">🪐</div>
+            <div class="content">
+              <div class="title">${sys.name}</div>
+              <div class="subtitle">${sys.subtitle}</div>
+              <div class="meta">${sys.meta}</div>
+              <div class="pillline">${sys.tags.map(t => `<span class="pill-tag">${t}</span>`).join("")}</div>
+            </div>
+            <div class="actions">
+              <button class="btn" data-action="enter-system">Entra nel sistema</button>
+            </div>`;
+          row.querySelector('[data-action="enter-system"]').addEventListener("click", () => enterSystem(sys));
+          b2bList.appendChild(row);
+        });
+      } else if (zoomLevel === "SYSTEM") {
+        categories.forEach(cat => {
+          const row = document.createElement("div");
+          row.className = "b2b-card";
+          row.innerHTML = `
+            <div class="thumb">${cat.icon}</div>
+            <div class="content">
+              <div class="title">${cat.name}</div>
+              <div class="subtitle">Categoria</div>
+              <div class="meta">
+                <span class="status-badge-simple ${cat.discount ? "" : "off"}">${cat.discount ? "Sconto attivo" : "Sconto non attivo"}</span>
+              </div>
+              <div class="pillline"><span class="pill-tag">${cat.tagLine}</span></div>
+            </div>
+            <div class="actions">
+              <button class="btn secondary" data-action="open-category">Apri categoria</button>
+            </div>`;
+          row.querySelector('[data-action="open-category"]').addEventListener("click", () => enterCategory(cat));
+          b2bList.appendChild(row);
+        });
+      } else if (zoomLevel === "CATEGORY") {
+        const productCard = document.createElement("div");
+        productCard.className = "b2b-card";
+        productCard.innerHTML = `
+          <div class="thumb">🎁</div>
+          <div class="content">
+            <div class="title">${sampleProduct.name}</div>
+            <div class="subtitle">${sampleProduct.meta}</div>
+            <div class="pillline">${sampleProduct.tags.map(t => `<span class="pill-tag">${t}</span>`).join("")}</div>
+          </div>
+          <div class="actions">
+            <button class="btn" data-action="focus-product">Apri scheda</button>
+          </div>`;
+        productCard.querySelector('[data-action="focus-product"]').addEventListener("click", () => focusProduct(sampleProduct));
+        b2bList.appendChild(productCard);
+      }
+    }
+
+    function enterSystem(system) {
+      zoomLevel = "SYSTEM";
+      currentSystem = system;
+      currentPath = [system.name];
+      renderEntity(system, "system");
+      renderSimpleList();
+      updateLabels();
+    }
+
+    function enterCategory(category) {
+      zoomLevel = "CATEGORY";
+      currentCategory = category;
+      currentPath = [currentSystem?.name, category.name].filter(Boolean);
+      renderEntity({ ...category, meta: "SKU: variabile • Listino: B2B" }, "category");
+      renderSimpleList();
+      updateLabels();
+    }
+
+    function focusProduct(product) {
+      zoomLevel = "PRODUCT";
+      currentPath = [currentSystem?.name, currentCategory?.name, product.name].filter(Boolean);
+      renderEntity({ ...product, promoPeriod: product.promoPeriod || "Validità: 1-24 dicembre" }, "product");
+      updateLabels();
+    }
+
+    function applyMode(mode) {
+      simpleMode = mode === "simple";
+      btnModeSimple.classList.toggle("active", simpleMode);
+      btnModeGalaxy.classList.toggle("active", !simpleMode);
+      if (simpleMode) {
+        canvas.style.pointerEvents = "none";
+        b2bList.style.display = "flex";
+        hint.textContent = "Tocca una categoria per aprire il listino. Pinch per ruotare la galassia.";
+      } else {
+        canvas.style.pointerEvents = "auto";
+        b2bList.style.display = "none";
+        hint.textContent = "In Vista galassia usa il tap sul canvas per navigare tra i nodi.";
+      }
+    }
+
+    // Event listeners per i tab di modalità
+    if (btnModeSimple) btnModeSimple.addEventListener("click", () => applyMode("simple"));
+    if (btnModeGalaxy) btnModeGalaxy.addEventListener("click", () => applyMode("galaxy"));
+
+    // Default su mobile: modo semplice
+    applyMode(simpleMode ? "simple" : "galaxy");
+    renderSimpleList();
+
+    const entityCard = document.getElementById("entity-card");
+    async function sendChatMessage() {
+      if (!chatInput) return;
+      const text = chatInput.value.trim();
+      if (!text) return;
+      chatInput.value = "";
+      appendChatMessage("user", text);
+
+      const payload = {
+        prompt: `Sei un assistente AI locale, integrato nella GUI TheLight24 Universe. Rispondi in italiano.\n\nUtente: ${text}\nAssistente:`,
+        n_predict: 256,
+        temperature: 0.7,
+        top_k: 40,
+        top_p: 0.9
+      };
+
+      try {
+        const res = await fetch(LLM_URL, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+
+        // ci aspettiamo sempre { content: "..." } dal backend
+        let reply = "";
+        if (data && typeof data.content === "string") {
+          reply = data.content;
+        } else {
+          reply = JSON.stringify(data, null, 2);
+        }
+
+        if (!reply) {
+          reply = "[Nessuna risposta dal modello]";
+        }
+
+        appendChatMessage("assistant", String(reply).trim());
+      } catch (e) {
+        appendChatMessage("system", "Errore nel contattare il modello su 127.0.0.1:8081");
+      }
+    }
+
+   function setChatStatus(state) {
+     if (!chatStatus) return;
+     chatStatus.classList.remove("status-idle", "status-pending", "status-sent");
+     if (state === "pending") {
+       chatStatus.textContent = "Pending";
+       chatStatus.classList.add("status-pending");
+     } else if (state === "sent") {
+       chatStatus.textContent = "Inviato";
+       chatStatus.classList.add("status-sent");
+     } else {
+       chatStatus.textContent = "Non inviato";
+       chatStatus.classList.add("status-idle");
+     }
+   }
+ 
+   if (btnChat) {
+     btnChat.addEventListener("click", () => {
+       showSheet(sheetChat);
+       setChatStatus("idle");
+       if (chatInput) chatInput.focus();
+     });
+   }
+   if (btnChatClose) {
+     btnChatClose.addEventListener("click", () => hideSheet(sheetChat));
+   }
+   if (btnChatSend) {
+     btnChatSend.addEventListener("click", sendChatMessage);
+   }
+   if (chatInput) {
+     chatInput.addEventListener("keydown", (e) => {
+       if (e.key === "Enter" && !e.shiftKey) {
+         e.preventDefault();
+         sendChatMessage();
+       }
+     });
+   }
+ 
+   // Bottone indietro globale: chiude modali e resetta la mappa
+
+  // Bottone indietro globale: chiude modali e resetta la mappa
+  function globalBack() {
+    [sheetRegister, sheetLogin, sheetCart, sheetProduct, sheetChat].forEach(el => {
+      if (el) el.style.display = "none";
+    });
+    entityCard.style.display = "none";
+    resetToGalaxy();
+  }
+
+  if (btnBack) {
+    btnBack.addEventListener("click", globalBack);
+  }
+
+  // EXPORT MINIMO
+  window.TheLightUniverse = {
+    getCurrentProduct: () => (currentEntityType === "product" ? currentEntity : null),
+    getCurrentUser: () => currentUser,
+    showToast,
+    BASE_URL,
+    openProductEditor
+  };
+
+  updateUserUI();
+  updateLabels();
+</script>
+</body>
+</html>
