@@ -15,6 +15,7 @@ from aiohttp import web
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
+from api.analytics import get_customer_analytics
 from .db import (
     clear_discount_rules_for_offer_segment,
     create_session_with_expiry,
@@ -22,6 +23,7 @@ from .db import (
     add_promo_points,
     delete_client,
     delete_product,
+    get_client_by_id,
     get_client_by_email,
     find_client_by_email_or_piva,
     get_daily_offer,
@@ -588,6 +590,25 @@ async def auth_change_password(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok"})
 
 
+def require_admin_user(request: web.Request):
+    token = request.headers.get("Authorization", "").replace("Bearer", "").strip()
+    if not token:
+        return None, web.json_response({"status": "error", "message": "Token mancante"}, status=401)
+
+    session = get_session(token)
+    if not session:
+        return None, web.json_response({"status": "error", "message": "Sessione non valida"}, status=401)
+
+    user = get_user_by_id(session.get("user_id"))
+    if not user:
+        return None, web.json_response({"status": "error", "message": "Utente non trovato"}, status=404)
+
+    if not user.get("is_admin"):
+        return None, web.json_response({"status": "error", "message": "Non autorizzato"}, status=403)
+
+    return user, None
+
+
 # ================== ECOMMERCE ==================
 
 async def pricing(request: web.Request) -> web.Response:
@@ -726,6 +747,30 @@ async def admin_notification_settings_save(request: web.Request) -> web.Response
         },
     }
     return web.json_response(response)
+
+
+async def admin_customer_analytics(request: web.Request) -> web.Response:
+    _, error = require_admin_user(request)
+    if error:
+        return error
+
+    customer_id = request.match_info.get("customer_id")
+    try:
+        customer_id_int = int(customer_id)
+    except Exception:
+        return web.json_response({"status": "error", "message": "customer_id non valido"}, status=400)
+
+    client = get_client_by_id(customer_id_int)
+    if not client:
+        return web.json_response({"status": "error", "message": "Cliente non trovato"}, status=404)
+
+    refresh_flag = str(request.rel_url.query.get("refresh", "")).lower() == "true"
+    analytics = await get_customer_analytics(
+        customer_id_int,
+        client.get("email"),
+        refresh=refresh_flag,
+    )
+    return web.json_response(analytics)
 
 
 async def notifications_poll(request: web.Request) -> web.Response:
@@ -1750,6 +1795,9 @@ def create_app() -> web.Application:
     )
     app.router.add_post(
         "/admin/notifications/settings", admin_notification_settings_save
+    )
+    app.router.add_get(
+        "/api/analytics/customer/{customer_id}", admin_customer_analytics
     )
 
     # PUBLIC OFFER

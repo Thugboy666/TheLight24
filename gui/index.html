@@ -292,7 +292,7 @@
       }
       .btn:active { transform: scale(0.97); }
 
-      .save-btn-admin {
+      .save-btn-admin { 
         width: 100%;
         background: #27ae60;
         color: white;
@@ -306,6 +306,53 @@
       .save-btn-admin:active {
         opacity: 0.7;
       }
+
+    .analytics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .stat-pill {
+      background: #fff7ed;
+      border: 1px solid #fed7aa;
+      border-radius: 12px;
+      padding: 10px;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.06);
+    }
+
+    .stat-pill h4 {
+      margin: 0 0 4px 0;
+      font-size: 12px;
+      color: #92400e;
+    }
+
+    .stat-pill .value {
+      font-size: 18px;
+      font-weight: 700;
+      margin: 0;
+    }
+
+    .mini-chart {
+      width: 100%;
+      height: 150px;
+      background: #ffffff;
+      border: 1px solid #e5e7eb;
+      border-radius: 12px;
+      padding: 8px;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,0.06);
+    }
+
+    .mini-chart svg {
+      width: 100%;
+      height: 100%;
+    }
+
+    .cache-label {
+      font-size: 11px;
+      color: #6b7280;
+    }
 
     @media (max-width: 480px) {
       #top-bar { padding: 4px 6px; }
@@ -1516,6 +1563,7 @@
         <button class="btn secondary" id="admin-tab-offers">Macro Offerte</button>
         <button class="btn secondary" id="admin-tab-import">Import Listino</button>
         <button class="btn secondary" id="admin-tab-promo">Promo</button>
+        <button class="btn secondary" id="admin-tab-analytics">Analytics Cliente</button>
       </div>
       <div id="admin-section-clients">
         <h3 style="margin:4px 0;">Gestione clienti</h3>
@@ -1784,6 +1832,64 @@
           <!-- Tabella listino generata via JS -->
         </div>
         <button class="save-btn-admin" onclick="saveAdminPriceList()">💾 Salva import listino</button>
+      </div>
+      <div id="admin-section-analytics" style="display:none;">
+        <h3 style="margin:4px 0;">Riepilogo intelligente cliente</h3>
+        <div class="two-cols">
+          <div class="field">
+            <label>Seleziona cliente</label>
+            <select id="analytics-client-select"></select>
+          </div>
+          <div class="field">
+            <label>ID cliente (override manuale)</label>
+            <input id="analytics-client-id" type="number" min="1" placeholder="ID interno" />
+          </div>
+        </div>
+        <div class="field" style="display:flex; gap:6px; flex-wrap:wrap;">
+          <button class="btn" id="btn-analytics-fetch">Mostra riepilogo</button>
+          <button class="btn secondary" id="btn-analytics-refresh">Ricalcola (ignora cache)</button>
+        </div>
+        <div id="analytics-status" class="small-hint"></div>
+        <div id="analytics-cache-label" class="cache-label"></div>
+        <div id="analytics-results" class="admin-card" style="display:none;">
+          <div class="analytics-grid">
+            <div class="stat-pill">
+              <h4>Totale mese corrente</h4>
+              <p class="value" id="analytics-current-month">-</p>
+            </div>
+            <div class="stat-pill">
+              <h4>Totale ultimi 3 mesi</h4>
+              <p class="value" id="analytics-last-months">-</p>
+            </div>
+            <div class="stat-pill">
+              <h4>Crescita %</h4>
+              <p class="value" id="analytics-growth">-</p>
+            </div>
+            <div class="stat-pill">
+              <h4>Margine medio</h4>
+              <p class="value" id="analytics-margin">-</p>
+            </div>
+          </div>
+          <div class="analytics-grid" style="margin-top:10px;">
+            <div class="mini-chart">
+              <strong style="font-size:12px;">Totali</strong>
+              <div id="analytics-period-chart"></div>
+            </div>
+            <div class="mini-chart">
+              <strong style="font-size:12px;">Top categorie</strong>
+              <div id="analytics-categories-chart"></div>
+            </div>
+          </div>
+          <div class="field" style="margin-top:10px;">
+            <label>Rischio abbandono</label>
+            <p id="analytics-churn" style="margin:2px 0;"></p>
+          </div>
+          <div class="field">
+            <label>Suggerimenti upsell</label>
+            <ul id="analytics-upsell"></ul>
+          </div>
+          <p class="small-hint" id="analytics-generated-at"></p>
+        </div>
       </div>
       <div id="admin-section-promo" style="display:none;">
         <h3 style="margin:4px 0;"></h3>
@@ -2206,10 +2312,12 @@
   const adminTabOffers = document.getElementById("admin-tab-offers");
   const adminTabImport = document.getElementById("admin-tab-import");
   const adminTabPromo = document.getElementById("admin-tab-promo");
+  const adminTabAnalytics = document.getElementById("admin-tab-analytics");
   const adminSectionClients = document.getElementById("admin-section-clients");
   const adminSectionOffers = document.getElementById("admin-section-offers");
   const adminSectionImport = document.getElementById("admin-section-import");
   const adminSectionPromo = document.getElementById("admin-section-promo");
+  const adminSectionAnalytics = document.getElementById("admin-section-analytics");
   const clientsTable = document.getElementById("clients-table");
   const clientNameInput = document.getElementById("client-name");
   const clientPivaInput = document.getElementById("client-piva");
@@ -2265,6 +2373,22 @@
   const promoDescriptionBox = document.getElementById("promo-promo-description");
   const promoActionsTextBox = document.getElementById("promo-actions-text-box");
   const promoActionsListBox = document.getElementById("promo-actions-list-box");
+  const analyticsClientSelect = document.getElementById("analytics-client-select");
+  const analyticsClientIdInput = document.getElementById("analytics-client-id");
+  const btnAnalyticsFetch = document.getElementById("btn-analytics-fetch");
+  const btnAnalyticsRefresh = document.getElementById("btn-analytics-refresh");
+  const analyticsStatus = document.getElementById("analytics-status");
+  const analyticsCacheLabel = document.getElementById("analytics-cache-label");
+  const analyticsResults = document.getElementById("analytics-results");
+  const analyticsCurrentMonth = document.getElementById("analytics-current-month");
+  const analyticsLastMonths = document.getElementById("analytics-last-months");
+  const analyticsGrowth = document.getElementById("analytics-growth");
+  const analyticsMargin = document.getElementById("analytics-margin");
+  const analyticsPeriodChart = document.getElementById("analytics-period-chart");
+  const analyticsCategoriesChart = document.getElementById("analytics-categories-chart");
+  const analyticsChurn = document.getElementById("analytics-churn");
+  const analyticsUpsell = document.getElementById("analytics-upsell");
+  const analyticsGeneratedAt = document.getElementById("analytics-generated-at");
 
   const notifyMacroOffersInput = document.getElementById("notify_macro_offers");
   const notifyDailyDealInput = document.getElementById("notify_daily_deal");
@@ -2454,6 +2578,16 @@
   adminTabImport.addEventListener("click", () => switchAdminTab("import"));
   if (adminTabPromo) {
     adminTabPromo.addEventListener("click", () => switchAdminTab("promo"));
+  }
+  if (adminTabAnalytics) {
+    adminTabAnalytics.addEventListener("click", () => switchAdminTab("analytics"));
+  }
+
+  if (btnAnalyticsFetch) {
+    btnAnalyticsFetch.addEventListener("click", () => fetchCustomerAnalytics(false));
+  }
+  if (btnAnalyticsRefresh) {
+    btnAnalyticsRefresh.addEventListener("click", () => fetchCustomerAnalytics(true));
   }
 
   btnClientReset.addEventListener("click", () => fillClientForm());
@@ -3000,9 +3134,9 @@
   }
 
   function switchAdminTab(target) {
-    [adminSectionClients, adminSectionOffers, adminSectionImport, adminSectionPromo]
+    [adminSectionClients, adminSectionOffers, adminSectionImport, adminSectionPromo, adminSectionAnalytics]
       .forEach((sec) => sec && (sec.style.display = "none"));
-    [adminTabClients, adminTabOffers, adminTabImport, adminTabPromo]
+    [adminTabClients, adminTabOffers, adminTabImport, adminTabPromo, adminTabAnalytics]
       .forEach((btn) => btn && btn.classList.add("secondary"));
     if (target === "clients") {
       adminSectionClients.style.display = "block";
@@ -3010,6 +3144,10 @@
     } else if (target === "offers") {
       adminSectionOffers.style.display = "block";
       adminTabOffers.classList.remove("secondary");
+    } else if (target === "analytics") {
+      adminSectionAnalytics.style.display = "block";
+      adminTabAnalytics.classList.remove("secondary");
+      renderAnalyticsClientOptions();
     } else if (target === "promo") {
       adminSectionPromo.style.display = "block";
       adminTabPromo.classList.remove("secondary");
@@ -3063,6 +3201,127 @@
       });
     });
     captureAdminClientsState();
+  }
+
+  function renderAnalyticsClientOptions() {
+    if (!analyticsClientSelect) return;
+    analyticsClientSelect.innerHTML = "";
+    const placeholder = document.createElement("option");
+    placeholder.value = "";
+    placeholder.textContent = "Seleziona cliente";
+    analyticsClientSelect.appendChild(placeholder);
+    (clients || []).forEach((c) => {
+      const opt = document.createElement("option");
+      opt.value = c.id;
+      opt.textContent = `${c.ragione_sociale || c.name || "Cliente"} (${c.email || ""})`;
+      analyticsClientSelect.appendChild(opt);
+    });
+  }
+
+  function drawMiniBars(container, items, { maxHeight = 110 } = {}) {
+    if (!container) return;
+    container.innerHTML = "";
+    const width = 240;
+    const height = maxHeight;
+    const svgNS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("viewBox", `0 0 ${width} ${height}`);
+    const values = items.map((i) => i.value);
+    const maxValue = Math.max(...values, 1);
+    const barWidth = Math.max(20, (width - 20) / items.length);
+
+    items.forEach((item, idx) => {
+      const barHeight = Math.max(2, (item.value / maxValue) * (height - 30));
+      const x = 10 + idx * barWidth;
+      const y = height - barHeight - 15;
+      const rect = document.createElementNS(svgNS, "rect");
+      rect.setAttribute("x", x.toString());
+      rect.setAttribute("y", y.toString());
+      rect.setAttribute("width", (barWidth - 12).toString());
+      rect.setAttribute("height", barHeight.toString());
+      rect.setAttribute("rx", "4");
+      rect.setAttribute("fill", idx === 0 ? "#fb923c" : "#f97316");
+      svg.appendChild(rect);
+
+      const label = document.createElementNS(svgNS, "text");
+      label.setAttribute("x", (x + (barWidth - 12) / 2).toString());
+      label.setAttribute("y", (height - 2).toString());
+      label.setAttribute("text-anchor", "middle");
+      label.setAttribute("font-size", "10");
+      label.textContent = item.label;
+      svg.appendChild(label);
+    });
+
+    container.appendChild(svg);
+  }
+
+  function renderAnalyticsCharts(data) {
+    const periodItems = [
+      { label: "Mese", value: data?.period?.current_month_total || 0 },
+      { label: "3 mesi", value: data?.period?.last_3_months_total || 0 }
+    ];
+    drawMiniBars(analyticsPeriodChart, periodItems);
+
+    const categories = (data?.categories || []).slice(0, 4).map((c) => ({
+      label: c.name?.slice(0, 8) || "Cat",
+      value: c.total || 0,
+    }));
+    drawMiniBars(analyticsCategoriesChart, categories.length ? categories : [{ label: "N/D", value: 0 }]);
+  }
+
+  function renderAnalyticsResults(data) {
+    if (!data) return;
+    analyticsResults.style.display = "block";
+    analyticsStatus.textContent = "";
+    analyticsCurrentMonth.textContent = `€ ${Number(data.period.current_month_total || 0).toFixed(2)}`;
+    analyticsLastMonths.textContent = `€ ${Number(data.period.last_3_months_total || 0).toFixed(2)}`;
+    analyticsGrowth.textContent = `${Number(data.period.growth_percent || 0).toFixed(2)} %`;
+    const margin = data?.margin?.average_margin_percent;
+    analyticsMargin.textContent = margin === null || margin === undefined ? "N/D" : `${margin}%`;
+    const churnScore = data?.ai?.churn_risk_score ?? "-";
+    const churnLevel = data?.ai?.churn_risk_level ?? "-";
+    analyticsChurn.textContent = `${churnScore} /100 – livello ${churnLevel}`;
+    analyticsUpsell.innerHTML = "";
+    (data?.ai?.upsell_suggestions || []).forEach((sugg) => {
+      const li = document.createElement("li");
+      li.textContent = sugg;
+      analyticsUpsell.appendChild(li);
+    });
+    analyticsGeneratedAt.textContent = data.generated_at ? `Aggiornato alle ${new Date(data.generated_at).toLocaleTimeString()}` : "";
+    analyticsCacheLabel.textContent = data.cached ? "Dato in cache (usa Ricalcola per aggiornare)." : "";
+    renderAnalyticsCharts(data);
+  }
+
+  async function fetchCustomerAnalytics(forceRefresh = false) {
+    if (!currentUser.is_admin) {
+      analyticsStatus.textContent = "Solo admin";
+      return;
+    }
+    const selectedId = analyticsClientSelect?.value || "";
+    const manualId = analyticsClientIdInput?.value || "";
+    const customerId = manualId || selectedId;
+    if (!customerId) {
+      analyticsStatus.textContent = "Seleziona un cliente o inserisci un ID.";
+      return;
+    }
+
+    analyticsStatus.textContent = "Calcolo in corso...";
+    analyticsResults.style.display = "none";
+    analyticsCacheLabel.textContent = "";
+    const headers = buildAuthHeaders();
+    const url = `${BASE_URL}/api/analytics/customer/${customerId}${forceRefresh ? "?refresh=true" : ""}`;
+    try {
+      const res = await fetch(url, { headers });
+      if (!res.ok) {
+        throw new Error(`Errore ${res.status}`);
+      }
+      const json = await res.json();
+      renderAnalyticsResults(json);
+      analyticsStatus.textContent = "Riepilogo aggiornato";
+    } catch (err) {
+      console.error("Errore analytics", err);
+      analyticsStatus.textContent = "Impossibile ottenere l'analytics";
+    }
   }
 
   function getCurrentClientRecord() {
@@ -3715,11 +3974,13 @@
       clients = data.clients || [];
       renderClientsTable();
       refreshPromoClientsSelect();
+      renderAnalyticsClientOptions();
       showToast("Cliente salvato");
     } catch (e) {
       if (existingIdx >= 0) clients[existingIdx] = client; else clients.push(client);
       renderClientsTable();
       refreshPromoClientsSelect();
+      renderAnalyticsClientOptions();
       showToast("Cliente salvato in locale", false);
     }
     fillClientForm();
@@ -3728,6 +3989,7 @@
   async function deleteClient(id) {
     clients = clients.filter((c) => c.id != id);
     renderClientsTable();
+    renderAnalyticsClientOptions();
     try {
       await fetch(BASE_URL + "/admin/clients/delete", {
         method: "POST",
@@ -3739,6 +4001,7 @@
       clients = data.clients || [];
       renderClientsTable();
       refreshPromoClientsSelect();
+      renderAnalyticsClientOptions();
     } catch (e) {
       showToast("Cliente eliminato solo in locale", false);
     }
@@ -4256,6 +4519,7 @@
       clients = data.clients || [];
       renderClientsTable();
       refreshPromoClientsSelect();
+      renderAnalyticsClientOptions();
       showToast("Import promo completato");
     } catch (e) {
       console.error("Errore uploadPromoClients", e);
@@ -6463,6 +6727,7 @@
       // Aggiorna i flag di sconto attivo sulle categorie dell'universo 3D
       syncUniverseCategoryDiscountFlags();
       clients = clientsJson.clients || [];
+      renderAnalyticsClientOptions();
       if (Array.isArray(productsJson.products)) {
         priceList = productsJson.products;
       } else if (Array.isArray(productsJson.items)) {
