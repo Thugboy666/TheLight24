@@ -755,6 +755,7 @@ async def admin_customer_analytics(request: web.Request) -> web.Response:
         return error
 
     customer_id = request.match_info.get("customer_id")
+    logger.info("Richiesta analytics cliente %s", customer_id)
     try:
         customer_id_int = int(customer_id)
     except Exception:
@@ -765,12 +766,19 @@ async def admin_customer_analytics(request: web.Request) -> web.Response:
         return web.json_response({"status": "error", "message": "Cliente non trovato"}, status=404)
 
     refresh_flag = str(request.rel_url.query.get("refresh", "")).lower() == "true"
-    analytics = await get_customer_analytics(
-        customer_id_int,
-        client.get("email"),
-        refresh=refresh_flag,
-    )
-    return web.json_response(analytics)
+    try:
+        analytics = await get_customer_analytics(
+            customer_id_int,
+            client.get("email"),
+            refresh=refresh_flag,
+        )
+        return web.json_response(analytics)
+    except Exception as exc:  # pragma: no cover - logging path
+        logger.exception("Errore nel calcolo analytics per cliente %s", customer_id)
+        return web.json_response(
+            {"status": "error", "message": "analytics_failed", "details": str(exc)},
+            status=500,
+        )
 
 
 async def notifications_poll(request: web.Request) -> web.Response:

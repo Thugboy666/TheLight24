@@ -3271,11 +3271,12 @@
 
   function renderAnalyticsResults(data) {
     if (!data) return;
+    const period = data?.period || {};
     analyticsResults.style.display = "block";
     analyticsStatus.textContent = "";
-    analyticsCurrentMonth.textContent = `€ ${Number(data.period.current_month_total || 0).toFixed(2)}`;
-    analyticsLastMonths.textContent = `€ ${Number(data.period.last_3_months_total || 0).toFixed(2)}`;
-    analyticsGrowth.textContent = `${Number(data.period.growth_percent || 0).toFixed(2)} %`;
+    analyticsCurrentMonth.textContent = `€ ${Number(period.current_month_total || 0).toFixed(2)}`;
+    analyticsLastMonths.textContent = `€ ${Number(period.last_3_months_total || 0).toFixed(2)}`;
+    analyticsGrowth.textContent = `${Number(period.growth_percent || 0).toFixed(2)} %`;
     const margin = data?.margin?.average_margin_percent;
     analyticsMargin.textContent = margin === null || margin === undefined ? "N/D" : `${margin}%`;
     const churnScore = data?.ai?.churn_risk_score ?? "-";
@@ -3313,6 +3314,13 @@
     try {
       const res = await fetch(url, { headers });
       if (!res.ok) {
+        let errorBody = null;
+        try {
+          errorBody = await res.json();
+        } catch (_) {
+          errorBody = await res.text();
+        }
+        console.error("Errore analytics HTTP", res.status, errorBody);
         throw new Error(`Errore ${res.status}`);
       }
       const json = await res.json();
