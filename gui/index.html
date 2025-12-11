@@ -3203,6 +3203,31 @@
     captureAdminClientsState();
   }
 
+  async function fetchAdminClients() {
+    try {
+      console.log("[Admin] Caricamento clienti...");
+      const token = currentUser?.token || null;
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
+      const res = await fetch("/admin/clients/all", { headers });
+      if (!res.ok) {
+        console.error("Errore caricamento clienti:", res.status);
+        showToast("Impossibile caricare i clienti", false);
+        return null;
+      }
+      const data = await res.json();
+      console.log("[Admin] Clienti ricevuti:", data);
+      clients = data.clients || [];
+      renderClientsTable();
+      refreshPromoClientsSelect();
+      renderAnalyticsClientOptions();
+      return clients;
+    } catch (e) {
+      console.error("Errore fetchAdminClients", e);
+      showToast("Impossibile caricare i clienti", false);
+      return null;
+    }
+  }
+
   function renderAnalyticsClientOptions() {
     if (!analyticsClientSelect) return;
     analyticsClientSelect.innerHTML = "";
@@ -3309,26 +3334,35 @@
     analyticsStatus.textContent = "Calcolo in corso...";
     analyticsResults.style.display = "none";
     analyticsCacheLabel.textContent = "";
-    const headers = buildAuthHeaders();
-    const url = `${BASE_URL}/api/analytics/customer/${customerId}${forceRefresh ? "?refresh=true" : ""}`;
+    const headers = {};
+    const storedSession = window.localStorage.getItem("thelight24_session") || window.sessionStorage.getItem("thelight24_session");
+    let adminToken = currentUser?.token || null;
+    if (!adminToken && storedSession) {
+      try {
+        const parsed = JSON.parse(storedSession);
+        adminToken = parsed?.token || null;
+      } catch (err) {
+        console.error("Errore parsing sessione admin", err);
+      }
+    }
+    if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
+    const url = `/api/analytics/customer/${customerId}${forceRefresh ? "?refresh=true" : ""}`;
     try {
       const res = await fetch(url, { headers });
       if (!res.ok) {
-        let errorBody = null;
-        try {
-          errorBody = await res.json();
-        } catch (_) {
-          errorBody = await res.text();
-        }
+        const errorBody = await res.text();
         console.error("Errore analytics HTTP", res.status, errorBody);
-        throw new Error(`Errore ${res.status}`);
+        analyticsStatus.textContent = "IMPOSSIBILE OTTENERE ANALYTICS";
+        alert("IMPOSSIBILE OTTENERE ANALYTICS");
+        return;
       }
       const json = await res.json();
       renderAnalyticsResults(json);
       analyticsStatus.textContent = "Riepilogo aggiornato";
     } catch (err) {
       console.error("Errore analytics", err);
-      analyticsStatus.textContent = "Impossibile ottenere l'analytics";
+      analyticsStatus.textContent = "IMPOSSIBILE OTTENERE ANALYTICS";
+      alert("IMPOSSIBILE OTTENERE ANALYTICS");
     }
   }
 
@@ -3977,12 +4011,7 @@
         headers: buildAuthHeaders(),
         body: JSON.stringify(client),
       });
-      const refreshed = await fetch(BASE_URL + "/admin/clients/all", { headers: buildAuthHeaders() });
-      const data = await refreshed.json();
-      clients = data.clients || [];
-      renderClientsTable();
-      refreshPromoClientsSelect();
-      renderAnalyticsClientOptions();
+      await fetchAdminClients();
       showToast("Cliente salvato");
     } catch (e) {
       if (existingIdx >= 0) clients[existingIdx] = client; else clients.push(client);
@@ -4004,12 +4033,7 @@
         headers: buildAuthHeaders(),
         body: JSON.stringify({ id }),
       });
-      const refreshed = await fetch(BASE_URL + "/admin/clients/all", { headers: buildAuthHeaders() });
-      const data = await refreshed.json();
-      clients = data.clients || [];
-      renderClientsTable();
-      refreshPromoClientsSelect();
-      renderAnalyticsClientOptions();
+      await fetchAdminClients();
     } catch (e) {
       showToast("Cliente eliminato solo in locale", false);
     }
@@ -4522,12 +4546,7 @@
         const total = newCount + updatedCount;
         promoClientsPreview.textContent = `Clienti promo importati: ${total} (nuovi: ${newCount}, aggiornati: ${updatedCount})`;
       }
-      const refreshed = await fetch(BASE_URL + "/admin/clients/all", { headers: buildAuthHeaders() });
-      const data = await refreshed.json();
-      clients = data.clients || [];
-      renderClientsTable();
-      refreshPromoClientsSelect();
-      renderAnalyticsClientOptions();
+      await fetchAdminClients();
       showToast("Import promo completato");
     } catch (e) {
       console.error("Errore uploadPromoClients", e);
@@ -5046,26 +5065,6 @@
       return;
     }
 
-    const ADMIN_EMAIL = "god@local";
-    const ADMIN_PASS = "OrmaNet!2025$Light";
-    if (payload.email === ADMIN_EMAIL && payload.password === ADMIN_PASS) {
-      currentUser.logged = true;
-      currentUser.name = "GOD ADMIN";
-      currentUser.tier = "distributore";
-      currentUser.token = null;
-      currentUser.email = payload.email;
-      currentUser.is_admin = true;
-      updateUserUI();
-      hideSheet(sheetLogin);
-      showToast("Modalità admin attiva");
-      saveSessionToStorage(
-        { name: currentUser.name, tier: currentUser.tier, email: payload.email, is_admin: true },
-        null,
-        remember
-      );
-      return;
-    }
-
     try {
       const res = await fetch(BASE_URL + "/auth/login", {
         method: "POST",
@@ -5077,23 +5076,23 @@
         currentUser.logged = true;
         currentUser.name = json.name || payload.email;
         currentUser.tier = json.tier || "rivenditore10";
-      currentUser.token = json.token || null;
-      currentUser.email = payload.email;
-      currentUser.is_admin = !!json.is_admin;
-      updateUserUI();
-      hideSheet(sheetLogin);
-      showToast("Bentornato, " + currentUser.name);
+        currentUser.token = json.token || null;
+        currentUser.email = payload.email;
+        currentUser.is_admin = !!json.is_admin;
+        updateUserUI();
+        hideSheet(sheetLogin);
+        showToast("Bentornato, " + currentUser.name);
 
-      ensureNotificationPermission();
-      if (currentUser.token) startNotificationPolling();
-      if (currentUser.is_admin) {
-        await loadNotificationSettings();
-      }
+        ensureNotificationPermission();
+        if (currentUser.token) startNotificationPolling();
+        if (currentUser.is_admin) {
+          await loadNotificationSettings();
+        }
 
-      saveSessionToStorage(
-        { name: currentUser.name, tier: currentUser.tier, email: payload.email, is_admin: currentUser.is_admin },
-        currentUser.token,
-        remember
+        saveSessionToStorage(
+          { name: currentUser.name, tier: currentUser.tier, email: payload.email, is_admin: currentUser.is_admin },
+          currentUser.token,
+          remember
         );
       } else {
         showToast("Credenziali errate.", false);
@@ -6691,9 +6690,8 @@
       const promoCfgPromise = fetch(BASE_URL + "/admin/promo/config", { headers: authHeaders }).catch(() => null);
       const dailyOfferPromise = fetch(BASE_URL + "/admin/daily-offer", { headers: authHeaders }).catch(() => null);
       const priceListStatusPromise = fetch(BASE_URL + "/admin/price_list/status", { headers: authHeaders }).catch(() => null);
-      const [offersRes, clientsRes, productsRes, promoCfgRes, dailyOfferRes, priceListStatusRes] = await Promise.all([
+      const [offersRes, productsRes, promoCfgRes, dailyOfferRes, priceListStatusRes] = await Promise.all([
         fetch(BASE_URL + "/admin/offers/all", { headers: authHeaders }),
-        fetch(BASE_URL + "/admin/clients/all", { headers: authHeaders }),
         fetch(BASE_URL + "/admin/products/all", { headers: authHeaders }),
         promoCfgPromise,
         dailyOfferPromise,
@@ -6701,7 +6699,6 @@
       ]);
 
       const offersJson = await offersRes.json();
-      const clientsJson = await clientsRes.json();
       const productsJson = await productsRes.json();
       macroOffers = extractMacroOffersFromResponse(offersJson);
       if (promoCfgRes && promoCfgRes.ok) {
@@ -6734,8 +6731,7 @@
       syncAllMacroOffers();
       // Aggiorna i flag di sconto attivo sulle categorie dell'universo 3D
       syncUniverseCategoryDiscountFlags();
-      clients = clientsJson.clients || [];
-      renderAnalyticsClientOptions();
+      await fetchAdminClients();
       if (Array.isArray(productsJson.products)) {
         priceList = productsJson.products;
       } else if (Array.isArray(productsJson.items)) {

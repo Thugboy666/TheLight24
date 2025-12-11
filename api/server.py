@@ -461,13 +461,45 @@ async def auth_login(request: web.Request) -> web.Response:
     ADMIN_EMAIL = "god@local"
     ADMIN_PASS = "OrmaNet!2025$Light"
     if email == ADMIN_EMAIL and password == ADMIN_PASS:
-        log_event("admin_login", email=email, tier="distributore")
+        admin_user = get_user_by_email(ADMIN_EMAIL)
+        if not admin_user:
+            password_hash = hash_password(ADMIN_PASS)
+            admin_user = create_user(
+                email=ADMIN_EMAIL,
+                password_hash=password_hash,
+                name="GOD ADMIN",
+                tier="distributore",
+                is_admin=1,
+            )
+        else:
+            if not admin_user.get("is_admin"):
+                with get_db() as conn:
+                    conn.execute(
+                        "UPDATE users SET is_admin = 1 WHERE id = ?", (admin_user["id"],)
+                    )
+                    conn.commit()
+                admin_user = get_user_by_id(admin_user["id"]) or admin_user
+            if not verify_password(ADMIN_PASS, admin_user.get("password_hash", "")):
+                password_hash = hash_password(ADMIN_PASS)
+                with get_db() as conn:
+                    conn.execute(
+                        "UPDATE users SET password_hash = ? WHERE id = ?",
+                        (password_hash, admin_user["id"]),
+                    )
+                    conn.commit()
+                admin_user = get_user_by_id(admin_user["id"]) or admin_user
+
+        expires_delta = timedelta(days=30) if remember else timedelta(hours=24)
+        token = create_session_with_expiry(
+            user_id=admin_user["id"], expires_delta=expires_delta
+        )
+        log_event("admin_login", email=email, tier=admin_user.get("tier", "distributore"))
         return web.json_response(
             {
                 "status": "ok",
-                "name": "GOD ADMIN",
-                "tier": "distributore",
-                "token": None,
+                "name": admin_user.get("name") or "GOD ADMIN",
+                "tier": admin_user.get("tier", "distributore"),
+                "token": token,
                 "is_admin": True,
             }
         )
