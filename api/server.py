@@ -168,6 +168,47 @@ def verify_password(plain_password: str, stored_hash: str) -> bool:
     return False
 
 
+def ensure_admin_user() -> dict:
+    admin_email = "god@local"
+    admin_password = "OrmaNet!2025$Light"
+    admin_name = "GOD ADMIN"
+    admin_tier = "distributore"
+    admin_user = get_user_by_email(admin_email)
+
+    if not admin_user:
+        password_hash = hash_password(admin_password)
+        return create_user(
+            email=admin_email,
+            password_hash=password_hash,
+            name=admin_name,
+            tier=admin_tier,
+            is_admin=1,
+        )
+
+    updates: list[tuple[str, Any]] = []
+    if not admin_user.get("is_admin"):
+        updates.append(("is_admin", 1))
+    if admin_user.get("tier") != admin_tier:
+        updates.append(("tier", admin_tier))
+    if admin_user.get("name") != admin_name:
+        updates.append(("name", admin_name))
+    if not verify_password(admin_password, admin_user.get("password_hash", "")):
+        updates.append(("password_hash", hash_password(admin_password)))
+
+    if updates:
+        set_clause = ", ".join(f"{column} = ?" for column, _ in updates)
+        values = [value for _, value in updates] + [admin_user["id"]]
+        with get_db() as conn:
+            conn.execute(f"UPDATE users SET {set_clause} WHERE id = ?", values)
+            conn.commit()
+        admin_user = get_user_by_id(admin_user["id"]) or admin_user
+
+    return admin_user
+
+
+ensure_admin_user()
+
+
 def get_user_from_request(request: web.Request) -> tuple[Optional[dict], Optional[dict]]:
     """Estrae l'utente autenticato dalla richiesta (token Bearer)."""
 
@@ -463,37 +504,17 @@ async def auth_login(request: web.Request) -> web.Response:
     if email == ADMIN_EMAIL and password == ADMIN_PASS:
         admin_user = get_user_by_email(ADMIN_EMAIL)
         if not admin_user:
-            password_hash = hash_password(ADMIN_PASS)
-            admin_user = create_user(
-                email=ADMIN_EMAIL,
-                password_hash=password_hash,
-                name="GOD ADMIN",
-                tier="distributore",
-                is_admin=1,
-            )
-        else:
-            if not admin_user.get("is_admin"):
-                with get_db() as conn:
-                    conn.execute(
-                        "UPDATE users SET is_admin = 1 WHERE id = ?", (admin_user["id"],)
-                    )
-                    conn.commit()
-                admin_user = get_user_by_id(admin_user["id"]) or admin_user
-            if not verify_password(ADMIN_PASS, admin_user.get("password_hash", "")):
-                password_hash = hash_password(ADMIN_PASS)
-                with get_db() as conn:
-                    conn.execute(
-                        "UPDATE users SET password_hash = ? WHERE id = ?",
-                        (password_hash, admin_user["id"]),
-                    )
-                    conn.commit()
-                admin_user = get_user_by_id(admin_user["id"]) or admin_user
+            admin_user = ensure_admin_user()
 
-        expires_delta = timedelta(days=30) if remember else timedelta(hours=24)
         token = create_session_with_expiry(
-            user_id=admin_user["id"], expires_delta=expires_delta
+            user_id=admin_user["id"], expires_delta=timedelta(hours=24)
         )
-        log_event("admin_login", email=email, tier=admin_user.get("tier", "distributore"))
+        log_event(
+            "admin_login",
+            email=email,
+            tier=admin_user.get("tier", "distributore"),
+            token=bool(token),
+        )
         return web.json_response(
             {
                 "status": "ok",
