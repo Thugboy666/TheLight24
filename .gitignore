@@ -19,4 +19,8 @@ llm/models/
 
 # DB locali (se li hai)
 *.sqlite3
+data/db/*.db
+data/db/*.sqlite
+data/db/*.sqlite3
+
 
