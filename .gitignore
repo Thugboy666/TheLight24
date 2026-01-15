@@ -27,3 +27,7 @@ data/db/*.sqlite3
 data/db/*.db
 data/db/*.sqlite
 data/db/*.sqlite3
+# local databases
+data/db/*.db
+data/db/*.sqlite
+data/db/*.sqlite3
