@@ -257,6 +257,29 @@
       color: #000000;
     }
     .pill span.label { opacity: 0.7; }
+    .admin-llm-indicator {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      margin: 2px 0 8px;
+      color: #111827;
+    }
+    .admin-llm-indicator .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 999px;
+      background: #9ca3af;
+    }
+    .admin-llm-indicator[data-status="ok"] .dot {
+      background: #16a34a;
+    }
+    .admin-llm-indicator[data-status="warming_up"] .dot {
+      background: #f59e0b;
+    }
+    .admin-llm-indicator[data-status="down"] .dot {
+      background: #ef4444;
+    }
     .btn {
       font-size: 11px;
       border-radius: 999px;
@@ -1558,6 +1581,11 @@
   <div class="backdrop" id="sheet-admin">
     <div class="sheet admin-panel admin-root">
       <h2>Pannello Admin</h2>
+      <div class="admin-llm-indicator" id="admin-llm-indicator" data-status="unknown">
+        <span class="dot"></span>
+        <span class="label">LLM</span>
+        <span id="admin-llm-status-text">-</span>
+      </div>
       <div style="display:flex; gap:6px; margin-bottom:8px;">
         <button class="btn" id="admin-tab-clients">Clienti</button>
         <button class="btn secondary" id="admin-tab-offers">Macro Offerte</button>
@@ -2425,6 +2453,8 @@
   const btnLlmClose = document.getElementById("btn-llm-close");
   const btnAdminClose = document.getElementById("btn-admin-close");
   const btnPromoPointsClose = document.getElementById("btn-promo-points-close");
+  const adminLlmIndicator = document.getElementById("admin-llm-indicator");
+  const adminLlmStatusText = document.getElementById("admin-llm-status-text");
 
   const promoPointsCard = document.getElementById("promo-points-card");
   const promoPointsValue = document.getElementById("promo-points-value");
@@ -2488,7 +2518,50 @@
     el.style.display = "none";
     disableOverlayMode();
     showBadges();
+    if (el && el.id === "sheet-admin") {
+      stopAdminLlmHealthPolling();
+    }
   };
+
+  let adminLlmHealthInterval = null;
+
+  function updateAdminLlmIndicator(status, httpCode, latencyMs) {
+    if (!adminLlmIndicator || !adminLlmStatusText) return;
+    adminLlmIndicator.dataset.status = status || "unknown";
+    const codeLabel = httpCode ? `HTTP ${httpCode}` : "offline";
+    const latencyLabel = typeof latencyMs === "number" ? `${latencyMs}ms` : "";
+    const pieces = [];
+    if (status === "ok") pieces.push("ok");
+    if (status === "warming_up") pieces.push("warmup");
+    if (status === "down") pieces.push("down");
+    pieces.push(codeLabel);
+    if (latencyLabel) pieces.push(latencyLabel);
+    adminLlmStatusText.textContent = pieces.filter(Boolean).join(" • ");
+  }
+
+  async function fetchAdminLlmHealth() {
+    if (!adminLlmIndicator || !adminLlmStatusText) return;
+    try {
+      const res = await fetch(`${BASE_URL}/system/llm_health`);
+      const data = await res.json();
+      updateAdminLlmIndicator(data.status || "down", data.http_code, data.latency_ms);
+    } catch (err) {
+      console.warn("Errore fetch /system/llm_health", err);
+      updateAdminLlmIndicator("down", 0, null);
+    }
+  }
+
+  function startAdminLlmHealthPolling() {
+    if (adminLlmHealthInterval || !adminLlmIndicator) return;
+    fetchAdminLlmHealth();
+    adminLlmHealthInterval = setInterval(fetchAdminLlmHealth, 5000);
+  }
+
+  function stopAdminLlmHealthPolling() {
+    if (!adminLlmHealthInterval) return;
+    clearInterval(adminLlmHealthInterval);
+    adminLlmHealthInterval = null;
+  }
 
   function scrollOrdersSheetToTop() {
     const scrollContainer = document.querySelector("#sheet-orders .sheet");
@@ -2542,6 +2615,7 @@
     btnAdmin.addEventListener("click", () => {
       window.CURRENT_VIEW = "admin";
       showSheet(sheetAdmin);
+      startAdminLlmHealthPolling();
 
       // forza lo scroll della pagina in alto
       window.scrollTo(0, 0);
@@ -6659,7 +6733,22 @@
           stop: ["Utente:", "User:", "Assistente:", "Assistant:"]
         })
       });
-      const json = await res.json();
+      const json = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        if (json && json.error === "llm_warmup") {
+          llmStatus.textContent = "LLM si sta avviando (warmup), riprova tra pochi secondi.";
+          appendLlmMessage("bot", json.detail || "LLM sta inizializzando, attendi qualche secondo.");
+          return;
+        }
+        if (json && json.error === "llm_unreachable") {
+          llmStatus.textContent = "LLM non raggiungibile al momento.";
+          appendLlmMessage("bot", json.detail || "Non riesco a contattare il modello locale.");
+          return;
+        }
+        llmStatus.textContent = "Errore chiamata modello locale.";
+        appendLlmMessage("bot", json.detail || "Si è verificato un errore durante la richiesta LLM.");
+        return;
+      }
       const out = json.content || json.generated_text || json.completion || JSON.stringify(json);
       appendLlmMessage("bot", out.trim());
       llmStatus.textContent = "";

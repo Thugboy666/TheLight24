@@ -2,6 +2,8 @@ import io
 import logging
 import os
 import uuid
+import asyncio
+import time
 from datetime import datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -453,12 +455,19 @@ async def ui_desktop_index(request: web.Request) -> web.Response:
 # ================== SYSTEM ==================
 
 async def health(request: web.Request) -> web.Response:
+    llm_status = await fetch_llm_health()
     data = {
         "status": "ok",
         "project": "TheLight24 v7",
         "env": "dev",
         "time": now_iso(),
+        "llm_status": llm_status,
     }
+    return web.json_response(data)
+
+
+async def llm_health(request: web.Request) -> web.Response:
+    data = await fetch_llm_health()
     return web.json_response(data)
 
 
@@ -1730,14 +1739,11 @@ async def llm_chat(request: web.Request) -> web.Response:
     """
     payload = await request.json()
 
-    try:
-        async with httpx.AsyncClient(timeout=120.0) as client:
-            r = await client.post(LLM_BACKEND_URL, json=payload)
-    except Exception as e:  # noqa: BLE001
-        return web.json_response(
-            {"error": f"impossibile contattare backend LLM: {e}"},
-            status=502,
-        )
+    response, error = await call_llm_with_retry(payload)
+    if error:
+        return web.json_response(error["payload"], status=error["status"])
+
+    r = response
 
     # Proviamo a fare parse JSON, altrimenti teniamo il testo puro
     text_body = r.text
@@ -1782,6 +1788,122 @@ async def llm_chat(request: web.Request) -> web.Response:
         content = "[LLM non ha restituito testo utile]"
 
     return web.json_response({"content": content})
+
+
+async def fetch_llm_health() -> dict:
+    payload = {"prompt": "ping", "n_predict": 1}
+    start = time.monotonic()
+    try:
+        async with httpx.AsyncClient(timeout=5.0) as client:
+            response = await client.post(LLM_BACKEND_URL, json=payload)
+        latency_ms = int((time.monotonic() - start) * 1000)
+        status_code = response.status_code
+        if status_code == 503:
+            status = "warming_up"
+        elif status_code in {200, 400, 405}:
+            status = "ok"
+        else:
+            status = "down"
+        return {
+            "status": status,
+            "http_code": status_code,
+            "latency_ms": latency_ms,
+        }
+    except (httpx.ConnectError, httpx.TimeoutException) as exc:
+        latency_ms = int((time.monotonic() - start) * 1000)
+        logger.warning("LLM health check connection error: %s", exc)
+        return {"status": "down", "http_code": 0, "latency_ms": latency_ms}
+    except httpx.HTTPError as exc:
+        latency_ms = int((time.monotonic() - start) * 1000)
+        logger.warning("LLM health check HTTP error: %s", exc)
+        return {"status": "down", "http_code": 0, "latency_ms": latency_ms}
+
+
+async def call_llm_with_retry(payload: dict) -> tuple[Optional[httpx.Response], Optional[dict]]:
+    backoff_schedule = [0.5, 1, 2, 4, 6, 8]
+    max_attempts = len(backoff_schedule) + 1
+    max_attempts_5xx = 3
+
+    last_error: Optional[dict] = None
+    async with httpx.AsyncClient(timeout=120.0) as client:
+        for attempt in range(1, max_attempts + 1):
+            attempt_start = time.monotonic()
+            try:
+                response = await client.post(LLM_BACKEND_URL, json=payload)
+                elapsed = time.monotonic() - attempt_start
+                status_code = response.status_code
+                logger.info(
+                    "LLM request attempt %s/%s status=%s elapsed=%.3fs",
+                    attempt,
+                    max_attempts,
+                    status_code,
+                    elapsed,
+                )
+
+                if status_code == 503:
+                    last_error = {
+                        "status": 503,
+                        "payload": {
+                            "error": "llm_warmup",
+                            "detail": "LLM sta inizializzando, riprova tra 10s.",
+                        },
+                    }
+                elif status_code >= 500:
+                    last_error = {
+                        "status": 502,
+                        "payload": {
+                            "error": "llm_error",
+                            "detail": f"LLM error (HTTP {status_code}).",
+                        },
+                    }
+                    if attempt >= max_attempts_5xx:
+                        return None, last_error
+                else:
+                    return response, None
+            except (httpx.ConnectError, httpx.TimeoutException) as exc:
+                elapsed = time.monotonic() - attempt_start
+                logger.warning(
+                    "LLM request attempt %s/%s failed (connection/timeout) elapsed=%.3fs error=%s",
+                    attempt,
+                    max_attempts,
+                    elapsed,
+                    exc,
+                )
+                last_error = {
+                    "status": 502,
+                    "payload": {
+                        "error": "llm_unreachable",
+                        "detail": "Impossibile contattare LLM, verifica che il server sia attivo.",
+                    },
+                }
+            except httpx.HTTPError as exc:
+                elapsed = time.monotonic() - attempt_start
+                logger.warning(
+                    "LLM request attempt %s/%s failed (http error) elapsed=%.3fs error=%s",
+                    attempt,
+                    max_attempts,
+                    elapsed,
+                    exc,
+                )
+                last_error = {
+                    "status": 502,
+                    "payload": {
+                        "error": "llm_unreachable",
+                        "detail": "Errore HTTP nel contattare LLM.",
+                    },
+                }
+
+            if attempt < max_attempts:
+                wait_time = backoff_schedule[attempt - 1]
+                await asyncio.sleep(wait_time)
+
+    return None, last_error or {
+        "status": 502,
+        "payload": {
+            "error": "llm_unreachable",
+            "detail": "Impossibile contattare LLM.",
+        },
+    }
 
 
 @web.middleware
@@ -1840,6 +1962,7 @@ def create_app() -> web.Application:
 
     # SYSTEM
     app.router.add_get("/system/health", health)
+    app.router.add_get("/system/llm_health", llm_health)
 
     # AUTH (stub locale)
     app.router.add_post("/auth/register", auth_register)
