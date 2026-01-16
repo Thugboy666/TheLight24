@@ -6707,6 +6707,8 @@
   });
 
   // LLM CHAT FRONTEND
+  const DEFAULT_LLM_N_PREDICT = 96;
+
   function appendLlmMessage(role, text) {
     const div = document.createElement("div");
     div.className = "llm-msg " + (role === "user" ? "user" : "bot");
@@ -6727,7 +6729,8 @@
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
-          prompt: text
+          prompt: text,
+          n_predict: DEFAULT_LLM_N_PREDICT
         })
       });
       const json = await res.json().catch(() => ({}));
