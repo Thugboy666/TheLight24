@@ -10,15 +10,34 @@ from llm.model_client import complete_text
 ANALYTICS_CACHE_TTL_MINUTES = 20
 _ANALYTICS_CACHE: Dict[str, Dict[str, Any]] = {}
 
+try:
+    from zoneinfo import ZoneInfo
 
-def _parse_order_date(value: Optional[str]) -> Optional[datetime]:
+    ANALYTICS_TZ = ZoneInfo("Europe/Rome")
+    ANALYTICS_TZ_NAME = "Europe/Rome"
+except Exception:  # pragma: no cover - zoneinfo fallback
+    ANALYTICS_TZ = timezone.utc
+    ANALYTICS_TZ_NAME = "UTC"
+
+
+def _parse_order_date(value: Optional[Any]) -> Optional[datetime]:
     if not value:
         return None
+    if isinstance(value, datetime):
+        return value
     try:
-        clean_value = value.replace("Z", "+00:00")
+        clean_value = str(value).replace("Z", "+00:00")
         return datetime.fromisoformat(clean_value)
     except Exception:
         return None
+
+
+def _ensure_aware(dt: Optional[datetime]) -> Optional[datetime]:
+    if dt is None:
+        return None
+    if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
+        return dt.replace(tzinfo=ANALYTICS_TZ)
+    return dt.astimezone(ANALYTICS_TZ)
 
 
 def _month_key(dt: datetime) -> str:
@@ -43,18 +62,45 @@ def _demo_orders(customer_id: Any) -> List[Dict[str, Any]]:
     return demo
 
 
-def _normalize_orders_for_client(customer_id: Any, client_email: Optional[str]) -> List[Dict[str, Any]]:
-    client = get_client_by_id(int(customer_id)) if customer_id is not None else None
+def _normalize_orders_for_client(
+    customer_id: Any, client_email: Optional[str], client_name: Optional[str] = None, client_record: Optional[Dict[str, Any]] = None
+) -> List[Dict[str, Any]]:
+    client = client_record or (get_client_by_id(int(customer_id)) if customer_id is not None else None)
     email = client_email or (client or {}).get("email")
-    name = (client or {}).get("ragione_sociale") or (client or {}).get("name")
+    name = client_name or (client or {}).get("ragione_sociale") or (client or {}).get("name")
     orders = list_orders(customer_email=email, customer_name=name, include_all=False)
     if orders:
         return orders
     return _demo_orders(customer_id or "demo")
 
 
+def get_orders_for_customer(
+    customer_id: Any, client_email: Optional[str], client_name: Optional[str] = None, client_record: Optional[Dict[str, Any]] = None
+) -> List[Dict[str, Any]]:
+    return _normalize_orders_for_client(customer_id, client_email, client_name=client_name, client_record=client_record)
+
+
+def get_orders_debug_info(orders: List[Dict[str, Any]], customer_id: Any, customer_email: Optional[str]) -> Dict[str, Any]:
+    dates: List[datetime] = []
+    for order in orders:
+        parsed = _parse_order_date(order.get("order_date"))
+        aware = _ensure_aware(parsed)
+        if aware:
+            dates.append(aware)
+    first = min(dates) if dates else None
+    last = max(dates) if dates else None
+    return {
+        "customer_id": str(customer_id) if customer_id is not None else None,
+        "email": customer_email,
+        "orders_count": len(orders),
+        "first_order_date": first.isoformat() if first else None,
+        "last_order_date": last.isoformat() if last else None,
+        "timezone": ANALYTICS_TZ_NAME,
+    }
+
+
 def compute_sales_metrics(orders: List[Dict[str, Any]]) -> Dict[str, Any]:
-    now = datetime.now(timezone.utc)
+    now = datetime.now(ANALYTICS_TZ)
     start_current_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
     def start_of_previous_months(n: int) -> datetime:
@@ -71,7 +117,8 @@ def compute_sales_metrics(orders: List[Dict[str, Any]]) -> Dict[str, Any]:
 
     for order in orders:
         amount = float(order.get("total_amount") or 0)
-        dt = _parse_order_date(order.get("order_date"))
+        parsed_dt = _parse_order_date(order.get("order_date"))
+        dt = _ensure_aware(parsed_dt)
         cat = (order.get("cause") or order.get("status") or "Generale").strip()
         category_totals[cat] += amount
         if dt:
@@ -190,7 +237,7 @@ async def get_customer_analytics(
         if cached:
             return cached
 
-    orders = orders_override if orders_override is not None else _normalize_orders_for_client(customer_id, client_email)
+    orders = orders_override if orders_override is not None else get_orders_for_customer(customer_id, client_email)
     stats = compute_sales_metrics(orders)
     ai_block = await get_customer_risk_and_upsell_suggestions(customer_id, stats)
     result = {
@@ -212,4 +259,8 @@ __all__ = [
     "get_customer_risk_and_upsell_suggestions",
     "reset_cache",
     "ANALYTICS_CACHE_TTL_MINUTES",
+    "ANALYTICS_TZ",
+    "ANALYTICS_TZ_NAME",
+    "get_orders_for_customer",
+    "get_orders_debug_info",
 ]

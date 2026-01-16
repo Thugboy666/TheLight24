@@ -56,6 +56,7 @@ LLM_CTX="${LLM_CTX:-1024}"
 
 API_PORT="8080"
 API_HOST="${API_HOST:-0.0.0.0}"
+CLOUDFLARE_HOSTNAME="${CLOUDFLARE_HOSTNAME:-${CLOUDFLARE_TUNNEL_HOSTNAME:-}}"
 
 stop_dead_pidfile() {
   PF="$1"
@@ -134,20 +135,35 @@ else
 fi
 
 # === CHECK LLM RAPIDO ===
-printf "⏳ Check LLM su 127.0.0.1:%s ..." "$LLM_PORT"
+printf "⏳ Attendo LLM su 127.0.0.1:%s/completion ...\n" "$LLM_PORT"
+LLM_READY="false"
 if command -v curl >/dev/null 2>&1; then
-  for i in 1 2 3 4 5; do
-    if curl -s -m 3 -H "Content-Type: application/json" \
+  START_TS="$(date +%s)"
+  while true; do
+    CODE="$(curl -s -o /dev/null -w "%{http_code}" -m 3 -H "Content-Type: application/json" \
       -d '{"prompt":"ping","n_predict":8}' \
-      "http://127.0.0.1:${LLM_PORT}/completion" >/dev/null 2>&1; then
-      echo " ok"
+      "http://127.0.0.1:${LLM_PORT}/completion" || true)"
+    if [ "$CODE" = "200" ] || [ "$CODE" = "400" ] || [ "$CODE" = "405" ]; then
+      echo "✅ LLM ready (HTTP $CODE)"
+      LLM_READY="true"
       break
     fi
-    sleep 1
-    [ "$i" -eq 5 ] && echo " FAIL (controlla logs/llm.log)"
+    if [ "$CODE" = "503" ]; then
+      echo "⏳ LLM warming up (HTTP 503)..."
+    elif [ "$CODE" = "000" ] || [ -z "$CODE" ]; then
+      echo "⏳ LLM non raggiungibile..."
+    else
+      echo "ℹ️  LLM risponde HTTP $CODE, continuo attesa..."
+    fi
+    NOW_TS="$(date +%s)"
+    if [ $((NOW_TS - START_TS)) -ge 90 ]; then
+      echo "⚠️  Timeout attesa LLM (90s), procedo comunque."
+      break
+    fi
+    sleep 2
   done
 else
-  echo " (curl non disponibile, salto check)"
+  echo "⚠️  curl non disponibile, salto check LLM"
 fi
 
 # === AVVIO API+GUI (aiohttp + index.html) ===
@@ -167,7 +183,17 @@ else
   sleep 2
 fi
 
-echo "✅ Avviato."
+if [ "$LLM_READY" = "true" ]; then
+  echo "✅ LLM ready."
+else
+  echo "⚠️  LLM non confermato pronto (controlla logs/llm.log)."
+fi
+echo "✅ API ready."
 echo "- LLM:      PID $(cat "$RUN_DIR/llm.pid" 2>/dev/null || echo '?')  | log: $LOG_DIR/llm.log  | http://127.0.0.1:$LLM_PORT"
 echo "- API+GUI:  PID $(cat "$RUN_DIR/gui.pid" 2>/dev/null || echo '?') | log: $LOG_DIR/gui.log | http://127.0.0.1:$API_PORT"
+if [ -n "$CLOUDFLARE_HOSTNAME" ]; then
+  echo "Public URL via Cloudflare: https://$CLOUDFLARE_HOSTNAME"
+else
+  echo "Public URL via Cloudflare: (imposta CLOUDFLARE_HOSTNAME)"
+fi
 echo "------------------------------------"
