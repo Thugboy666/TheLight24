@@ -141,6 +141,31 @@ db = get_db()
 LLM_BACKEND_URL = os.environ.get("LLM_BACKEND_URL", "http://127.0.0.1:8081/completion")
 
 
+def _get_env_float(name: str, default: float) -> float:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return float(raw)
+    except ValueError:
+        return default
+
+
+def _get_env_int(name: str, default: int) -> int:
+    raw = os.environ.get(name)
+    if raw is None:
+        return default
+    try:
+        return int(raw)
+    except ValueError:
+        return default
+
+
+LLM_CONNECT_TIMEOUT = _get_env_float("LLM_CONNECT_TIMEOUT", 5.0)
+LLM_TOTAL_TIMEOUT = _get_env_float("LLM_TOTAL_TIMEOUT", 180.0)
+LLM_DEFAULT_N_PREDICT = _get_env_int("LLM_DEFAULT_N_PREDICT", 96)
+
+
 # ================== FALLBACK UTILS ==================
 
 def now_iso() -> str:
@@ -1734,7 +1759,8 @@ async def ping_llm(url: str) -> str:
     payload = {"prompt": "ping", "n_predict": 1}
     ping_url = _build_llm_ping_url(url)
     try:
-        async with httpx.AsyncClient(timeout=2.0) as client:
+        timeout = httpx.Timeout(LLM_CONNECT_TIMEOUT, connect=LLM_CONNECT_TIMEOUT)
+        async with httpx.AsyncClient(timeout=timeout) as client:
             response = await client.post(ping_url, json=payload)
         status_code = response.status_code
         if status_code in (200, 400, 404):
@@ -1748,8 +1774,8 @@ async def ping_llm(url: str) -> str:
         return "down"
 
 
-async def ping_llm_with_backoff(url: str, retries: int = 5) -> str:
-    backoff_schedule = [0.5, 1, 2, 3, 5]
+async def ping_llm_with_backoff(url: str, retries: int = 3) -> str:
+    backoff_schedule = [0.5, 1, 2]
     status = await ping_llm(url)
     if status != "warming_up":
         return status
@@ -1791,6 +1817,16 @@ async def llm_chat(request: web.Request) -> web.Response:
     prompt_len = len(prompt)
     prompt_preview = prompt[:60]
     n_predict = payload.get("n_predict")
+    if n_predict is None:
+        payload["n_predict"] = LLM_DEFAULT_N_PREDICT
+        n_predict = LLM_DEFAULT_N_PREDICT
+    else:
+        try:
+            payload["n_predict"] = int(n_predict)
+            n_predict = payload["n_predict"]
+        except (TypeError, ValueError):
+            payload["n_predict"] = LLM_DEFAULT_N_PREDICT
+            n_predict = LLM_DEFAULT_N_PREDICT
 
     response, error = await call_llm_with_retry(payload)
     llm_http_code = response.status_code if response else None
@@ -1866,12 +1902,22 @@ async def fetch_llm_health() -> dict:
     }
 
 
+def _build_llm_error_payload(code: str, message: str, detail: str) -> dict:
+    return {
+        "status": "error",
+        "code": code,
+        "message": message,
+        "detail": detail,
+    }
+
+
 async def call_llm_with_retry(payload: dict) -> tuple[Optional[httpx.Response], Optional[dict]]:
-    backoff_schedule = [0.5, 1, 2, 4, 8, 16]
+    backoff_schedule = [0.5, 1, 2]
     max_attempts = len(backoff_schedule)
 
     last_error: Optional[dict] = None
-    async with httpx.AsyncClient(timeout=30.0) as client:
+    timeout = httpx.Timeout(LLM_TOTAL_TIMEOUT, connect=LLM_CONNECT_TIMEOUT)
+    async with httpx.AsyncClient(timeout=timeout) as client:
         for attempt in range(1, max_attempts + 1):
             attempt_start = time.monotonic()
             should_retry = False
@@ -1880,39 +1926,40 @@ async def call_llm_with_retry(payload: dict) -> tuple[Optional[httpx.Response], 
                 elapsed = time.monotonic() - attempt_start
                 status_code = response.status_code
                 logger.info(
-                    "LLM request attempt %s/%s status=%s elapsed=%.3fs",
+                    "LLM request attempt %s/%s status=%s elapsed=%.3fs error_type=%s",
                     attempt,
                     max_attempts,
                     status_code,
                     elapsed,
+                    "http_status",
                 )
 
                 if status_code == 503:
                     last_error = {
                         "status": 503,
-                        "payload": {
-                            "status": "error",
-                            "code": "LLM_WARMING_UP",
-                            "message": "LLM sta inizializzando, riprova tra qualche secondo.",
-                        },
+                        "payload": _build_llm_error_payload(
+                            "LLM_WARMING_UP",
+                            "LLM sta inizializzando, riprova tra qualche secondo.",
+                            "connection",
+                        ),
                     }
                     should_retry = True
                 elif status_code >= 500:
                     last_error = {
                         "status": 502,
-                        "payload": {
-                            "status": "error",
-                            "code": "LLM_ERROR",
-                            "message": f"LLM error (HTTP {status_code}).",
-                        },
+                        "payload": _build_llm_error_payload(
+                            "LLM_ERROR",
+                            "LLM non raggiungibile",
+                            "bad_json",
+                        ),
                     }
                     should_retry = True
                 else:
                     return response, None
-            except (httpx.ConnectError, httpx.TimeoutException) as exc:
+            except httpx.ConnectError as exc:
                 elapsed = time.monotonic() - attempt_start
                 logger.warning(
-                    "LLM request attempt %s/%s failed (connection/timeout) elapsed=%.3fs error=%s",
+                    "LLM request attempt %s/%s failed (connection) elapsed=%.3fs error=%s",
                     attempt,
                     max_attempts,
                     elapsed,
@@ -1920,11 +1967,29 @@ async def call_llm_with_retry(payload: dict) -> tuple[Optional[httpx.Response], 
                 )
                 last_error = {
                     "status": 503,
-                    "payload": {
-                        "status": "error",
-                        "code": "LLM_UNREACHABLE",
-                        "message": "Impossibile contattare LLM, verifica che il server sia attivo.",
-                    },
+                    "payload": _build_llm_error_payload(
+                        "LLM_UNREACHABLE",
+                        "LLM non raggiungibile",
+                        "connection",
+                    ),
+                }
+                should_retry = True
+            except httpx.TimeoutException as exc:
+                elapsed = time.monotonic() - attempt_start
+                logger.warning(
+                    "LLM request attempt %s/%s failed (timeout) elapsed=%.3fs error=%s",
+                    attempt,
+                    max_attempts,
+                    elapsed,
+                    exc,
+                )
+                last_error = {
+                    "status": 503,
+                    "payload": _build_llm_error_payload(
+                        "LLM_UNREACHABLE",
+                        "LLM non raggiungibile",
+                        "timeout",
+                    ),
                 }
                 should_retry = True
             except httpx.HTTPError as exc:
@@ -1938,11 +2003,11 @@ async def call_llm_with_retry(payload: dict) -> tuple[Optional[httpx.Response], 
                 )
                 last_error = {
                     "status": 503,
-                    "payload": {
-                        "status": "error",
-                        "code": "LLM_UNREACHABLE",
-                        "message": "Errore HTTP nel contattare LLM.",
-                    },
+                    "payload": _build_llm_error_payload(
+                        "LLM_UNREACHABLE",
+                        "LLM non raggiungibile",
+                        "bad_json",
+                    ),
                 }
                 should_retry = True
 
@@ -1957,29 +2022,29 @@ async def call_llm_with_retry(payload: dict) -> tuple[Optional[httpx.Response], 
         if ping_status == "warming_up":
             return None, {
                 "status": 503,
-                "payload": {
-                    "status": "error",
-                    "code": "LLM_WARMING_UP",
-                    "message": "LLM sta inizializzando, riprova tra qualche secondo.",
-                },
+                "payload": _build_llm_error_payload(
+                    "LLM_WARMING_UP",
+                    "LLM sta inizializzando, riprova tra qualche secondo.",
+                    "connection",
+                ),
             }
         if ping_status == "reachable":
             return None, {
                 "status": 502,
-                "payload": {
-                    "status": "error",
-                    "code": "LLM_ERROR",
-                    "message": "LLM raggiungibile ma la richiesta è fallita.",
-                },
+                "payload": _build_llm_error_payload(
+                    "LLM_ERROR",
+                    "LLM non raggiungibile",
+                    "bad_json",
+                ),
             }
 
     return None, last_error or {
         "status": 503,
-        "payload": {
-            "status": "error",
-            "code": "LLM_UNREACHABLE",
-            "message": "Impossibile contattare LLM.",
-        },
+        "payload": _build_llm_error_payload(
+            "LLM_UNREACHABLE",
+            "LLM non raggiungibile",
+            "connection",
+        ),
     }
 
 
@@ -2108,8 +2173,8 @@ app = create_app()
 
 def main() -> None:
     """Avvia il server API aiohttp."""
-    host = os.environ.get("API_HOST", "0.0.0.0")
-    port = int(os.environ.get("API_PORT", 8080))
+    host = os.environ.get("API_HOST", os.environ.get("APP_HOST", "0.0.0.0"))
+    port = int(os.environ.get("API_PORT", os.environ.get("APP_PORT", 8080)))
     logger.info(
         "Avvio TheLight24 API server su %s:%s (LLM_BACKEND_URL=%s)",
         host,

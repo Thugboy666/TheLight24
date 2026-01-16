@@ -1,5 +1,6 @@
 # Virtualenv
 .venv/
+runtime/venv/
 
 # Cache Python
 __pycache__/
@@ -9,15 +10,23 @@ __pycache__/
 logs/
 full_backend_log.txt
 *.log
+runtime/logs/
+runtime/pids/
 
 # File locali/temporanei
 cloudflared.deb
 token_cmd.sh
+runtime/.env
+runtime/*
+!runtime/.env.example
 
 # Modelli LLM pesanti
 llm/models/
+runtime/llm/models/
+*.gguf
 
 # DB locali (se li hai)
+*.db
 *.sqlite3
 data/db/*.db
 data/db/*.sqlite
