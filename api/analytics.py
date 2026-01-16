@@ -103,6 +103,11 @@ def compute_sales_metrics(orders: List[Dict[str, Any]]) -> Dict[str, Any]:
     now = datetime.now(ANALYTICS_TZ)
     start_current_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
 
+    def normalize_dt(dt: datetime) -> datetime:
+        if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
+            return dt.replace(tzinfo=ANALYTICS_TZ)
+        return dt.astimezone(ANALYTICS_TZ)
+
     def start_of_previous_months(n: int) -> datetime:
         month = start_current_month.month - n
         year = start_current_month.year
@@ -121,6 +126,8 @@ def compute_sales_metrics(orders: List[Dict[str, Any]]) -> Dict[str, Any]:
     for order in orders:
         amount = float(order.get("total_amount") or 0)
         dt = parse_order_datetime(order.get("order_date"))
+        if dt:
+            dt = normalize_dt(dt)
         cat = (order.get("cause") or order.get("status") or "Generale").strip()
         category_totals[cat] += amount
         if dt:

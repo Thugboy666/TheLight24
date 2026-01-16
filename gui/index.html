@@ -2525,18 +2525,14 @@
 
   let adminLlmHealthInterval = null;
 
-  function updateAdminLlmIndicator(status, httpCode, latencyMs) {
+  function updateAdminLlmIndicator(status) {
     if (!adminLlmIndicator || !adminLlmStatusText) return;
     adminLlmIndicator.dataset.status = status || "unknown";
-    const codeLabel = httpCode ? `HTTP ${httpCode}` : "offline";
-    const latencyLabel = typeof latencyMs === "number" ? `${latencyMs}ms` : "";
-    const pieces = [];
-    if (status === "ok") pieces.push("ok");
-    if (status === "warming_up") pieces.push("warmup");
-    if (status === "down") pieces.push("down");
-    pieces.push(codeLabel);
-    if (latencyLabel) pieces.push(latencyLabel);
-    adminLlmStatusText.textContent = pieces.filter(Boolean).join(" • ");
+    let label = "-";
+    if (status === "ok") label = "OK";
+    if (status === "warming_up") label = "Warming up";
+    if (status === "down") label = "Down";
+    adminLlmStatusText.textContent = label;
   }
 
   async function fetchAdminLlmHealth() {
@@ -2544,10 +2540,10 @@
     try {
       const res = await fetch(`${BASE_URL}/system/llm_health`);
       const data = await res.json();
-      updateAdminLlmIndicator(data.status || "down", data.http_code, data.latency_ms);
+      updateAdminLlmIndicator(data.status || "down");
     } catch (err) {
       console.warn("Errore fetch /system/llm_health", err);
-      updateAdminLlmIndicator("down", 0, null);
+      updateAdminLlmIndicator("down");
     }
   }
 
@@ -3439,7 +3435,7 @@
           analyticsStatus.textContent = "LLM in avvio o offline. Riprova tra poco.";
         } else if (res.status === 500) {
           const requestId = payload?.debug?.request_id ? ` (richiesta ${payload.debug.request_id})` : "";
-          analyticsStatus.textContent = `Errore analytics${requestId}.`;
+          analyticsStatus.textContent = `Errore analytics${requestId}. Hint: date parsing.`;
         } else {
           analyticsStatus.textContent = "Errore analytics.";
         }

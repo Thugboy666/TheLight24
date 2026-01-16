@@ -8,6 +8,7 @@ from datetime import datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
 from typing import Any, Dict, List, Optional
+from urllib.parse import urlsplit, urlunsplit
 
 import bcrypt
 import hashlib
@@ -467,8 +468,14 @@ async def health(request: web.Request) -> web.Response:
 
 
 async def llm_health(request: web.Request) -> web.Response:
-    data = await fetch_llm_health()
-    return web.json_response(data)
+    status = await ping_llm(LLM_BACKEND_URL)
+    if status == "reachable":
+        payload = {"status": "ok"}
+    elif status == "warming_up":
+        payload = {"status": "warming_up"}
+    else:
+        payload = {"status": "down"}
+    return web.json_response(payload)
 
 
 # ================== AUTH (STUB) ==================
@@ -1715,6 +1722,46 @@ async def public_daily_offer(request: web.Request) -> web.Response:
 
 # ================== LLM LOCALE ==================
 
+def _build_llm_ping_url(url: str) -> str:
+    parts = urlsplit(url)
+    path = parts.path or ""
+    if path in ("", "/"):
+        path = "/completion"
+    return urlunsplit((parts.scheme, parts.netloc, path, parts.query, parts.fragment))
+
+
+async def ping_llm(url: str) -> str:
+    payload = {"prompt": "ping", "n_predict": 1}
+    ping_url = _build_llm_ping_url(url)
+    try:
+        async with httpx.AsyncClient(timeout=2.0) as client:
+            response = await client.post(ping_url, json=payload)
+        status_code = response.status_code
+        if status_code in (200, 400, 404):
+            return "reachable"
+        if status_code == 503:
+            return "warming_up"
+        return "down"
+    except (httpx.ConnectError, httpx.TimeoutException):
+        return "down"
+    except httpx.HTTPError:
+        return "down"
+
+
+async def ping_llm_with_backoff(url: str, retries: int = 5) -> str:
+    backoff_schedule = [0.5, 1, 2, 3, 5]
+    status = await ping_llm(url)
+    if status != "warming_up":
+        return status
+    for attempt in range(1, retries + 1):
+        wait_time = backoff_schedule[min(attempt - 1, len(backoff_schedule) - 1)]
+        logger.info("LLM ping warming up, retry %s/%s in %.1fs", attempt, retries, wait_time)
+        await asyncio.sleep(wait_time)
+        status = await ping_llm(url)
+        if status != "warming_up":
+            break
+    return status
+
 async def llm_complete(request: web.Request) -> web.Response:
     """
     Endpoint interno TheLight24 (non usato dalla GUI attuale)
@@ -1793,32 +1840,17 @@ async def llm_chat(request: web.Request) -> web.Response:
 
 
 async def fetch_llm_health() -> dict:
-    payload = {"prompt": "ping", "n_predict": 1}
     start = time.monotonic()
-    try:
-        async with httpx.AsyncClient(timeout=5.0) as client:
-            response = await client.post(LLM_BACKEND_URL, json=payload)
-        latency_ms = int((time.monotonic() - start) * 1000)
-        status_code = response.status_code
-        if status_code == 503:
-            status = "warming_up"
-        elif status_code == 200:
-            status = "ok"
-        else:
-            status = "down"
-        return {
-            "status": status,
-            "http_code": status_code,
-            "latency_ms": latency_ms,
-        }
-    except (httpx.ConnectError, httpx.TimeoutException) as exc:
-        latency_ms = int((time.monotonic() - start) * 1000)
-        logger.warning("LLM health check connection error: %s", exc)
-        return {"status": "down", "http_code": 0, "latency_ms": latency_ms}
-    except httpx.HTTPError as exc:
-        latency_ms = int((time.monotonic() - start) * 1000)
-        logger.warning("LLM health check HTTP error: %s", exc)
-        return {"status": "down", "http_code": 0, "latency_ms": latency_ms}
+    status = await ping_llm(LLM_BACKEND_URL)
+    latency_ms = int((time.monotonic() - start) * 1000)
+    if status == "reachable":
+        mapped_status = "ok"
+    else:
+        mapped_status = status
+    return {
+        "status": mapped_status,
+        "latency_ms": latency_ms,
+    }
 
 
 async def call_llm_with_retry(payload: dict) -> tuple[Optional[httpx.Response], Optional[dict]]:
@@ -1906,6 +1938,27 @@ async def call_llm_with_retry(payload: dict) -> tuple[Optional[httpx.Response], 
                 await asyncio.sleep(wait_time)
             elif not should_retry:
                 break
+
+    if last_error and last_error.get("payload", {}).get("code") == "LLM_UNREACHABLE":
+        ping_status = await ping_llm_with_backoff(LLM_BACKEND_URL)
+        if ping_status == "warming_up":
+            return None, {
+                "status": 503,
+                "payload": {
+                    "status": "error",
+                    "code": "LLM_WARMING_UP",
+                    "message": "LLM sta inizializzando, riprova tra qualche secondo.",
+                },
+            }
+        if ping_status == "reachable":
+            return None, {
+                "status": 502,
+                "payload": {
+                    "status": "error",
+                    "code": "LLM_ERROR",
+                    "message": "LLM raggiungibile ma la richiesta è fallita.",
+                },
+            }
 
     return None, last_error or {
         "status": 503,
