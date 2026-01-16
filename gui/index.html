@@ -2025,8 +2025,6 @@
 <script>
   const BASE_URL =
     window.THELIGHT_BASE_URL || `${window.location.protocol}//${window.location.host}`;
-  const LLM_URL =
-    window.THELIGHT_LLM_URL || `${window.location.protocol}//${window.location.hostname}:8081/completion`;
 
   const originalFetch = window.fetch.bind(window);
   window.fetch = async (input, init = {}) => {
@@ -2538,11 +2536,11 @@
   async function fetchAdminLlmHealth() {
     if (!adminLlmIndicator || !adminLlmStatusText) return;
     try {
-      const res = await fetch(`${BASE_URL}/system/llm_health`);
+      const res = await fetch(`${BASE_URL}/api/llm/health`);
       const data = await res.json();
       updateAdminLlmIndicator(data.status || "down");
     } catch (err) {
-      console.warn("Errore fetch /system/llm_health", err);
+      console.warn("Errore fetch /api/llm/health", err);
       updateAdminLlmIndicator("down");
     }
   }
@@ -6724,48 +6722,36 @@
     appendLlmMessage("user", text);
     llmStatus.textContent = "Il modello sta pensando...";
 
-    const systemPrompt =
-      "Sei un assistente AI locale, integrato nella GUI TheLight24 Universe. " +
-      "Rispondi SEMPRE in italiano, in massimo 3 frasi brevi. " +
-      "Se ti viene chiesto di prodotti, ragiona come assistente B2B e-commerce.";
-
-    const fullPrompt = systemPrompt + "\n\nUtente: " + text + "\nAssistente:";
-
     try {
-      const res = await fetch(LLM_URL, {
+      const res = await fetch(`${BASE_URL}/api/llm/chat`, {
         method: "POST",
         headers: {"Content-Type": "application/json"},
         body: JSON.stringify({
-          prompt: fullPrompt,
-          n_predict: 96,
-          temperature: 0.7,
-          top_k: 40,
-          top_p: 0.9,
-          stop: ["Utente:", "User:", "Assistente:", "Assistant:"]
+          prompt: text
         })
       });
       const json = await res.json().catch(() => ({}));
       if (!res.ok) {
-        if (json && json.error === "llm_warmup") {
+        if (json && json.code === "LLM_WARMING_UP") {
           llmStatus.textContent = "LLM si sta avviando (warmup), riprova tra pochi secondi.";
-          appendLlmMessage("bot", json.detail || "LLM sta inizializzando, attendi qualche secondo.");
+          appendLlmMessage("bot", json.message || "LLM sta inizializzando, attendi qualche secondo.");
           return;
         }
-        if (json && json.error === "llm_unreachable") {
+        if (json && json.code === "LLM_UNREACHABLE") {
           llmStatus.textContent = "LLM non raggiungibile al momento.";
-          appendLlmMessage("bot", json.detail || "Non riesco a contattare il modello locale.");
+          appendLlmMessage("bot", json.message || "Non riesco a contattare il modello locale.");
           return;
         }
         llmStatus.textContent = "Errore chiamata modello locale.";
-        appendLlmMessage("bot", json.detail || "Si è verificato un errore durante la richiesta LLM.");
+        appendLlmMessage("bot", json.message || "Si è verificato un errore durante la richiesta LLM.");
         return;
       }
-      const out = json.content || json.generated_text || json.completion || JSON.stringify(json);
-      appendLlmMessage("bot", out.trim());
+      const out = json.content || "";
+      appendLlmMessage("bot", out.trim() || "[Risposta LLM vuota]");
       llmStatus.textContent = "";
     } catch (e) {
       llmStatus.textContent = "Errore chiamata modello locale.";
-      appendLlmMessage("bot", "Non riesco a contattare il modello locale. Verifica che llama-server sia attivo su 127.0.0.1:8081.");
+      appendLlmMessage("bot", "Non riesco a contattare il modello locale.");
     }
   }
 

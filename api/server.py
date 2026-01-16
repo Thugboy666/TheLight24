@@ -1787,8 +1787,21 @@ async def llm_chat(request: web.Request) -> web.Response:
     Normalizziamo SEMPRE in: {"content": "..."}
     """
     payload = await request.json()
+    prompt = str(payload.get("prompt") or "")
+    prompt_len = len(prompt)
+    prompt_preview = prompt[:60]
+    n_predict = payload.get("n_predict")
 
     response, error = await call_llm_with_retry(payload)
+    llm_http_code = response.status_code if response else None
+    log_event(
+        "llm_chat_proxy",
+        prompt_len=prompt_len,
+        prompt_preview=prompt_preview,
+        n_predict=n_predict,
+        llm_http_code=llm_http_code,
+        proxy_status=error.get("status") if error else None,
+    )
     if error:
         return web.json_response(error["payload"], status=error["status"])
 
@@ -2084,6 +2097,7 @@ def create_app() -> web.Application:
 
     # LLM
     app.router.add_post("/llm/complete", llm_complete)
+    app.router.add_get("/api/llm/health", llm_health)
     app.router.add_post("/api/llm/chat", llm_chat)
 
     return app

@@ -102,6 +102,7 @@ def get_orders_debug_info(orders: List[Dict[str, Any]], customer_id: Any, custom
 def compute_sales_metrics(orders: List[Dict[str, Any]]) -> Dict[str, Any]:
     now = datetime.now(ANALYTICS_TZ)
     start_current_month = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    start_current_year = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
 
     def normalize_dt(dt: datetime) -> datetime:
         if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
@@ -119,9 +120,11 @@ def compute_sales_metrics(orders: List[Dict[str, Any]]) -> Dict[str, Any]:
     monthly_totals: Dict[str, float] = defaultdict(float)
     category_totals: Dict[str, float] = defaultdict(float)
     current_month_total = 0.0
-    total_orders_count = len(orders)
+    total_orders_seen = len(orders)
     parsed_orders_count = 0
     invalid_dates_count = 0
+    earliest_order_date: Optional[datetime] = None
+    latest_order_date: Optional[datetime] = None
 
     for order in orders:
         amount = float(order.get("total_amount") or 0)
@@ -132,6 +135,10 @@ def compute_sales_metrics(orders: List[Dict[str, Any]]) -> Dict[str, Any]:
         category_totals[cat] += amount
         if dt:
             parsed_orders_count += 1
+            if earliest_order_date is None or dt < earliest_order_date:
+                earliest_order_date = dt
+            if latest_order_date is None or dt > latest_order_date:
+                latest_order_date = dt
             key = _month_key(dt)
             monthly_totals[key] += amount
             if dt >= start_current_month:
@@ -174,8 +181,10 @@ def compute_sales_metrics(orders: List[Dict[str, Any]]) -> Dict[str, Any]:
         "margin": {"average_margin_percent": margin_percent},
         "debug": {
             "invalid_dates_count": invalid_dates_count,
-            "total_orders_count": total_orders_count,
+            "total_orders_seen": total_orders_seen,
             "parsed_orders_count": parsed_orders_count,
+            "earliest_order_date": earliest_order_date.isoformat() if earliest_order_date else None,
+            "latest_order_date": latest_order_date.isoformat() if latest_order_date else None,
         },
     }
 
