@@ -3,7 +3,7 @@
 set -eu
 
 BASEDIR="$(cd "$(dirname "$0")" && pwd)"
-RUN_DIR="$BASEDIR/run"
+RUN_DIR="$BASEDIR/runtime"
 
 stop_service() {
   NAME="$1"

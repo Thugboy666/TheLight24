@@ -4,7 +4,7 @@
 set -u
 
 BASEDIR="$(cd "$(dirname "$0")" && pwd)"
-RUN_DIR="$BASEDIR/run"
+RUN_DIR="$BASEDIR/runtime"
 LOG_DIR="$BASEDIR/logs"
 UI_INDEX="$BASEDIR/gui/index.html"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
@@ -71,8 +71,11 @@ stop_dead_pidfile() {
 
 mkdir -p "$RUN_DIR"
 
-stop_dead_pidfile "$RUN_DIR/llm.pid"
-stop_dead_pidfile "$RUN_DIR/gui.pid"
+LLM_PID_FILE="$RUN_DIR/llm.pid"
+GUI_PID_FILE="$RUN_DIR/gui.pid"
+
+stop_dead_pidfile "$LLM_PID_FILE"
+stop_dead_pidfile "$GUI_PID_FILE"
 
 # === CHECK BINARIO LLM ===
 if [ ! -x "$LLM_BIN" ]; then
@@ -118,10 +121,28 @@ fi
 
 echo "🧠 Userò il modello: $MODEL"
 
-# === AVVIO LLM ===
-if [ -f "$RUN_DIR/llm.pid" ] && kill -0 "$(cat "$RUN_DIR/llm.pid")" 2>/dev/null; then
-  echo "ℹ️  LLM già avviato (PID $(cat "$RUN_DIR/llm.pid"))."
-else
+is_port_listening() {
+  PORT="$1"
+  if command -v ss >/dev/null 2>&1; then
+    ss -ltn 2>/dev/null | grep -E "[:.]${PORT}\$" >/dev/null 2>&1
+    return $?
+  fi
+  if command -v netstat >/dev/null 2>&1; then
+    netstat -ltn 2>/dev/null | grep -E "[:.]${PORT}\$" >/dev/null 2>&1
+    return $?
+  fi
+  return 1
+}
+
+ensure_llm_running() {
+  if is_port_listening "$LLM_PORT"; then
+    echo "ℹ️  LLM già in ascolto sulla porta $LLM_PORT."
+    return 0
+  fi
+  if [ -f "$LLM_PID_FILE" ] && kill -0 "$(cat "$LLM_PID_FILE")" 2>/dev/null; then
+    echo "ℹ️  LLM già avviato (PID $(cat "$LLM_PID_FILE"))."
+    return 0
+  fi
   echo "▶️  Avvio LLM: $LLM_BIN"
   (cd "$(dirname "$LLM_BIN")" && \
     nohup "$LLM_BIN" \
@@ -130,45 +151,49 @@ else
       --port "$LLM_PORT" \
       --threads "$LLM_THREADS" \
       --ctx-size "$LLM_CTX" \
-      > "$LOG_DIR/llm.log" 2>&1 & echo $! > "$RUN_DIR/llm.pid")
+      > "$LOG_DIR/llm.log" 2>&1 & echo $! > "$LLM_PID_FILE")
   sleep 2
-fi
+}
 
-# === CHECK LLM RAPIDO ===
-printf "⏳ Attendo LLM su 127.0.0.1:%s/completion ...\n" "$LLM_PORT"
-LLM_READY="false"
-if command -v curl >/dev/null 2>&1; then
-  START_TS="$(date +%s)"
-  while true; do
-    CODE="$(curl -s -o /dev/null -w "%{http_code}" -m 3 -H "Content-Type: application/json" \
-      -d '{"prompt":"ping","n_predict":8}' \
-      "http://127.0.0.1:${LLM_PORT}/completion" || true)"
-    if [ "$CODE" = "200" ] || [ "$CODE" = "400" ] || [ "$CODE" = "405" ]; then
-      echo "✅ LLM ready (HTTP $CODE)"
-      LLM_READY="true"
-      break
-    fi
-    if [ "$CODE" = "503" ]; then
-      echo "⏳ LLM warming up (HTTP 503)..."
-    elif [ "$CODE" = "000" ] || [ -z "$CODE" ]; then
-      echo "⏳ LLM non raggiungibile..."
-    else
-      echo "ℹ️  LLM risponde HTTP $CODE, continuo attesa..."
-    fi
-    NOW_TS="$(date +%s)"
-    if [ $((NOW_TS - START_TS)) -ge 90 ]; then
-      echo "⚠️  Timeout attesa LLM (90s), procedo comunque."
-      break
-    fi
-    sleep 2
-  done
-else
-  echo "⚠️  curl non disponibile, salto check LLM"
-fi
+wait_for_llm_ready() {
+  printf "⏳ Attendo LLM su 127.0.0.1:%s/completion ...\n" "$LLM_PORT"
+  LLM_READY="false"
+  if command -v curl >/dev/null 2>&1; then
+    START_TS="$(date +%s)"
+    while true; do
+      CODE="$(curl -s -o /dev/null -w "%{http_code}" -m 3 -H "Content-Type: application/json" \
+        -d '{"prompt":"ping","n_predict":1}' \
+        "http://127.0.0.1:${LLM_PORT}/completion" || true)"
+      if [ "$CODE" = "200" ] || [ "$CODE" = "400" ] || [ "$CODE" = "405" ]; then
+        echo "✅ LLM ready (HTTP $CODE)"
+        LLM_READY="true"
+        break
+      fi
+      if [ "$CODE" = "503" ]; then
+        echo "⏳ LLM warming up (HTTP 503)..."
+      elif [ "$CODE" = "000" ] || [ -z "$CODE" ]; then
+        echo "⏳ LLM non raggiungibile..."
+      else
+        echo "ℹ️  LLM risponde HTTP $CODE, continuo attesa..."
+      fi
+      NOW_TS="$(date +%s)"
+      if [ $((NOW_TS - START_TS)) -ge 120 ]; then
+        echo "⚠️  Timeout attesa LLM (120s), procedo comunque."
+        break
+      fi
+      sleep 1
+    done
+  else
+    echo "⚠️  curl non disponibile, salto check LLM"
+  fi
+}
+
+ensure_llm_running
+wait_for_llm_ready
 
 # === AVVIO API+GUI (aiohttp + index.html) ===
-if [ -f "$RUN_DIR/gui.pid" ] && kill -0 "$(cat "$RUN_DIR/gui.pid")" 2>/dev/null; then
-  echo "ℹ️  API+GUI già avviate (PID $(cat "$RUN_DIR/gui.pid"))."
+if [ -f "$GUI_PID_FILE" ] && kill -0 "$(cat "$GUI_PID_FILE")" 2>/dev/null; then
+  echo "ℹ️  API+GUI già avviate (PID $(cat "$GUI_PID_FILE"))."
 else
   echo "▶️  Avvio API+GUI (python -m api.server) su ${API_HOST}:${API_PORT}"
   (
@@ -178,7 +203,7 @@ else
     API_HOST="$API_HOST" \
     API_PORT="$API_PORT" \
     LLM_BACKEND_URL="http://127.0.0.1:${LLM_PORT}/completion" \
-    nohup python -m api.server > "$LOG_DIR/gui.log" 2>&1 & echo $! > "$RUN_DIR/gui.pid"
+    nohup python -m api.server > "$LOG_DIR/gui.log" 2>&1 & echo $! > "$GUI_PID_FILE"
   )
   sleep 2
 fi
@@ -189,8 +214,8 @@ else
   echo "⚠️  LLM non confermato pronto (controlla logs/llm.log)."
 fi
 echo "✅ API ready."
-echo "- LLM:      PID $(cat "$RUN_DIR/llm.pid" 2>/dev/null || echo '?')  | log: $LOG_DIR/llm.log  | http://127.0.0.1:$LLM_PORT"
-echo "- API+GUI:  PID $(cat "$RUN_DIR/gui.pid" 2>/dev/null || echo '?') | log: $LOG_DIR/gui.log | http://127.0.0.1:$API_PORT"
+echo "- LLM:      PID $(cat "$LLM_PID_FILE" 2>/dev/null || echo '?')  | log: $LOG_DIR/llm.log  | http://127.0.0.1:$LLM_PORT"
+echo "- API+GUI:  PID $(cat "$GUI_PID_FILE" 2>/dev/null || echo '?') | log: $LOG_DIR/gui.log | http://127.0.0.1:$API_PORT"
 if [ -n "$CLOUDFLARE_HOSTNAME" ]; then
   echo "Public URL via Cloudflare: https://$CLOUDFLARE_HOSTNAME"
 else
