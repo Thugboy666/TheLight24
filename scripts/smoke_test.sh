@@ -1,42 +1,16 @@
-#!/usr/bin/env sh
-set -eu
+#!/usr/bin/env bash
+set -euo pipefail
 
-BASE_URL="${BASE_URL:-http://127.0.0.1:8080}"
 ADMIN_TOKEN="${ADMIN_TOKEN:-}"
+CUSTOMER_ID="${CUSTOMER_ID:-}"
 
-if [ -z "$ADMIN_TOKEN" ]; then
-  echo "❌ ADMIN_TOKEN non impostato. Esempio: ADMIN_TOKEN=... $0"
+if [[ -z "${ADMIN_TOKEN}" || -z "${CUSTOMER_ID}" ]]; then
+  echo "Errore: imposta ADMIN_TOKEN e CUSTOMER_ID per il test analytics." >&2
+  echo "Esempio: ADMIN_TOKEN=... CUSTOMER_ID=123 ./scripts/smoke_test.sh" >&2
   exit 1
 fi
 
-echo "→ /system/health"
-HEALTH_CODE="$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/system/health" || true)"
-if [ "$HEALTH_CODE" != "200" ]; then
-  echo "❌ /system/health status=$HEALTH_CODE"
-  exit 1
-fi
-
-echo "→ /system/llm_health"
-LLM_HEALTH_CODE="$(curl -s -o /dev/null -w "%{http_code}" "$BASE_URL/system/llm_health" || true)"
-if [ "$LLM_HEALTH_CODE" != "200" ]; then
-  echo "❌ /system/llm_health status=$LLM_HEALTH_CODE"
-  exit 1
-fi
-
-echo "→ /admin/clients/all"
-CLIENTS_JSON="$(curl -s -H "Authorization: Bearer $ADMIN_TOKEN" "$BASE_URL/admin/clients/all")"
-CLIENT_ID="$(printf "%s" "$CLIENTS_JSON" | python3 -c 'import json,sys; data=json.load(sys.stdin); print((data.get("clients") or [{}])[0].get("id",""))')"
-if [ -z "$CLIENT_ID" ]; then
-  echo "❌ Nessun cliente trovato in /admin/clients/all"
-  exit 1
-fi
-
-echo "→ /api/analytics/customer/$CLIENT_ID"
-ANALYTICS_CODE="$(curl -s -o /dev/null -w "%{http_code}" -H "Authorization: Bearer $ADMIN_TOKEN" \
-  "$BASE_URL/api/analytics/customer/$CLIENT_ID")"
-if [ "$ANALYTICS_CODE" != "200" ]; then
-  echo "❌ /api/analytics/customer status=$ANALYTICS_CODE"
-  exit 1
-fi
-
-echo "✅ Smoke test OK"
+curl -fsS http://127.0.0.1:8080/system/health
+curl -fsS http://127.0.0.1:8080/api/llm/health
+curl -fsS -H "Content-Type: application/json" -d '{"prompt":"ping"}' http://127.0.0.1:8080/api/llm/chat | jq -r '.content'
+curl -fsS -H "Authorization: Bearer ${ADMIN_TOKEN}" "http://127.0.0.1:8080/api/analytics/customer/${CUSTOMER_ID}" | jq
