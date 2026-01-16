@@ -5,7 +5,7 @@ set -u
 
 BASEDIR="$(cd "$(dirname "$0")" && pwd)"
 RUN_DIR="$BASEDIR/runtime"
-LOG_DIR="$BASEDIR/logs"
+LOG_DIR="$RUN_DIR/logs"
 UI_INDEX="$BASEDIR/gui/index.html"
 PYTHON_BIN="${PYTHON_BIN:-python3}"
 
@@ -49,7 +49,7 @@ MODEL_B="$BASEDIR/llm/models/Phi-3-mini-4k-instruct-q4"
 MODELS_DIR1="$BASEDIR/llm/models"
 MODELS_DIR2="$BASEDIR/llm/llama.cpp/build/bin"
 
-LLM_HOST="0.0.0.0"
+LLM_HOST="127.0.0.1"
 LLM_PORT="8081"
 LLM_THREADS="${LLM_THREADS:-6}"
 LLM_CTX="${LLM_CTX:-1024}"
@@ -73,9 +73,11 @@ mkdir -p "$RUN_DIR"
 
 LLM_PID_FILE="$RUN_DIR/llm.pid"
 GUI_PID_FILE="$RUN_DIR/gui.pid"
+CLOUDFLARED_PID_FILE="$RUN_DIR/cloudflared.pid"
 
 stop_dead_pidfile "$LLM_PID_FILE"
 stop_dead_pidfile "$GUI_PID_FILE"
+stop_dead_pidfile "$CLOUDFLARED_PID_FILE"
 
 # === CHECK BINARIO LLM ===
 if [ ! -x "$LLM_BIN" ]; then
@@ -134,11 +136,47 @@ is_port_listening() {
   return 1
 }
 
-ensure_llm_running() {
-  if is_port_listening "$LLM_PORT"; then
-    echo "ℹ️  LLM già in ascolto sulla porta $LLM_PORT."
+describe_port_usage() {
+  PORT="$1"
+  if command -v ss >/dev/null 2>&1; then
+    LINE="$(ss -ltnp "sport = :$PORT" 2>/dev/null | tail -n 1)"
+    PID="$(printf "%s" "$LINE" | sed -n 's/.*pid=\([0-9]*\).*/\1/p')"
+    PROC="$(printf "%s" "$LINE" | sed -n 's/.*users:(("\([^"]*\)".*/\1/p')"
+    if [ -n "$PID" ]; then
+      echo "PID $PID (${PROC:-process})"
+      return 0
+    fi
+    echo "$LINE"
     return 0
   fi
+  if command -v lsof >/dev/null 2>&1; then
+    LINE="$(lsof -nP -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null | awk 'NR==2 {print $1, "pid", $2}')"
+    if [ -n "$LINE" ]; then
+      echo "$LINE"
+      return 0
+    fi
+  fi
+  echo "processo sconosciuto"
+}
+
+ensure_port_available() {
+  PORT="$1"
+  PID_FILE="$2"
+  LABEL="$3"
+  if is_port_listening "$PORT"; then
+    PORT_INFO="$(describe_port_usage "$PORT")"
+    if [ -f "$PID_FILE" ] && kill -0 "$(cat "$PID_FILE" 2>/dev/null)" 2>/dev/null; then
+      echo "ℹ️  $LABEL già in ascolto sulla porta $PORT (PID $(cat "$PID_FILE"))."
+      return 0
+    fi
+    echo "❌ Porta $PORT già in uso: $PORT_INFO"
+    echo "Chiudi il processo o aggiorna il PID file ($PID_FILE) prima di continuare."
+    exit 1
+  fi
+}
+
+ensure_llm_running() {
+  ensure_port_available "$LLM_PORT" "$LLM_PID_FILE" "LLM"
   if [ -f "$LLM_PID_FILE" ] && kill -0 "$(cat "$LLM_PID_FILE")" 2>/dev/null; then
     echo "ℹ️  LLM già avviato (PID $(cat "$LLM_PID_FILE"))."
     return 0
@@ -164,13 +202,15 @@ wait_for_llm_ready() {
       CODE="$(curl -s -o /dev/null -w "%{http_code}" -m 3 -H "Content-Type: application/json" \
         -d '{"prompt":"ping","n_predict":1}' \
         "http://127.0.0.1:${LLM_PORT}/completion" || true)"
-      if [ "$CODE" = "200" ] || [ "$CODE" = "400" ] || [ "$CODE" = "405" ]; then
+      if [ "$CODE" = "200" ]; then
         echo "✅ LLM ready (HTTP $CODE)"
         LLM_READY="true"
         break
       fi
       if [ "$CODE" = "503" ]; then
         echo "⏳ LLM warming up (HTTP 503)..."
+        LLM_READY="warming"
+        break
       elif [ "$CODE" = "000" ] || [ -z "$CODE" ]; then
         echo "⏳ LLM non raggiungibile..."
       else
@@ -192,6 +232,7 @@ ensure_llm_running
 wait_for_llm_ready
 
 # === AVVIO API+GUI (aiohttp + index.html) ===
+ensure_port_available "$API_PORT" "$GUI_PID_FILE" "API"
 if [ -f "$GUI_PID_FILE" ] && kill -0 "$(cat "$GUI_PID_FILE")" 2>/dev/null; then
   echo "ℹ️  API+GUI già avviate (PID $(cat "$GUI_PID_FILE"))."
 else
@@ -203,19 +244,75 @@ else
     API_HOST="$API_HOST" \
     API_PORT="$API_PORT" \
     LLM_BACKEND_URL="http://127.0.0.1:${LLM_PORT}/completion" \
-    nohup python -m api.server > "$LOG_DIR/gui.log" 2>&1 & echo $! > "$GUI_PID_FILE"
+    nohup python -m api.server > "$LOG_DIR/api.log" 2>&1 & echo $! > "$GUI_PID_FILE"
   )
   sleep 2
 fi
 
+wait_for_api_ready() {
+  printf "⏳ Attendo API su 127.0.0.1:%s/system/health ...\n" "$API_PORT"
+  if command -v curl >/dev/null 2>&1; then
+    START_TS="$(date +%s)"
+    while true; do
+      CODE="$(curl -s -o /dev/null -w "%{http_code}" -m 3 "http://127.0.0.1:${API_PORT}/system/health" || true)"
+      if [ "$CODE" = "200" ]; then
+        echo "✅ API pronta (HTTP $CODE)"
+        break
+      fi
+      if [ "$CODE" = "000" ] || [ -z "$CODE" ]; then
+        echo "⏳ API non raggiungibile..."
+      else
+        echo "ℹ️  API risponde HTTP $CODE, continuo attesa..."
+      fi
+      NOW_TS="$(date +%s)"
+      if [ $((NOW_TS - START_TS)) -ge 60 ]; then
+        echo "⚠️  Timeout attesa API (60s), procedo comunque."
+        break
+      fi
+      sleep 1
+    done
+  else
+    echo "⚠️  curl non disponibile, salto check API"
+  fi
+}
+
+wait_for_api_ready
+
+start_cloudflared() {
+  if [ -z "${CLOUDFLARED_CMD:-}" ]; then
+    return 0
+  fi
+  if [ -f "$CLOUDFLARED_PID_FILE" ] && kill -0 "$(cat "$CLOUDFLARED_PID_FILE")" 2>/dev/null; then
+    echo "ℹ️  cloudflared già avviato (PID $(cat "$CLOUDFLARED_PID_FILE"))."
+    return 0
+  fi
+  echo "▶️  Avvio cloudflared: $CLOUDFLARED_CMD"
+  nohup sh -c "$CLOUDFLARED_CMD" > "$LOG_DIR/cloudflared.log" 2>&1 & echo $! > "$CLOUDFLARED_PID_FILE"
+  sleep 1
+}
+
+start_cloudflared
+
+LAN_IP=""
+if [ "$API_HOST" = "0.0.0.0" ] || [ "$API_HOST" = "::" ]; then
+  if command -v hostname >/dev/null 2>&1; then
+    LAN_IP="$(hostname -I 2>/dev/null | awk '{print $1}')"
+  fi
+fi
+
 if [ "$LLM_READY" = "true" ]; then
   echo "✅ LLM ready."
+elif [ "$LLM_READY" = "warming" ]; then
+  echo "⏳ LLM warming up (raggiungibile)."
 else
-  echo "⚠️  LLM non confermato pronto (controlla logs/llm.log)."
+  echo "⚠️  LLM non confermato pronto (controlla $LOG_DIR/llm.log)."
 fi
 echo "✅ API ready."
 echo "- LLM:      PID $(cat "$LLM_PID_FILE" 2>/dev/null || echo '?')  | log: $LOG_DIR/llm.log  | http://127.0.0.1:$LLM_PORT"
-echo "- API+GUI:  PID $(cat "$GUI_PID_FILE" 2>/dev/null || echo '?') | log: $LOG_DIR/gui.log | http://127.0.0.1:$API_PORT"
+echo "- API+GUI:  PID $(cat "$GUI_PID_FILE" 2>/dev/null || echo '?') | log: $LOG_DIR/api.log | http://127.0.0.1:$API_PORT"
+if [ -n "$LAN_IP" ]; then
+  echo "- LAN:      http://$LAN_IP:$API_PORT"
+fi
 if [ -n "$CLOUDFLARE_HOSTNAME" ]; then
   echo "Public URL via Cloudflare: https://$CLOUDFLARE_HOSTNAME"
 else

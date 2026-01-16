@@ -850,22 +850,24 @@ async def admin_customer_analytics(request: web.Request) -> web.Response:
             debug_info = get_orders_debug_info(orders, customer_id_int, client.get("email"))
             debug_info["timezone"] = ANALYTICS_TZ_NAME
             analytics = dict(analytics)
-            analytics["debug"] = debug_info
+            debug_payload = dict(analytics.get("debug") or {})
+            debug_payload.update(debug_info)
+            analytics["debug"] = debug_payload
         return web.json_response(analytics)
     except Exception as exc:  # pragma: no cover - logging path
         logger.exception("Errore nel calcolo analytics per cliente %s", customer_id)
+        request_id = uuid.uuid4().hex
         message = str(exc)
-        error_code = "analytics_failed"
         details = "Errore nel calcolo analytics."
+        code = "ANALYTICS_ERROR"
         if isinstance(exc, TypeError) and "offset-naive" in message:
-            error_code = "analytics_failed_timezone"
             details = "Errore nel calcolo analytics (timezone non coerente)."
         return web.json_response(
             {
                 "status": "error",
-                "message": "analytics_failed",
-                "error_code": error_code,
-                "details": details,
+                "message": details,
+                "code": code,
+                "debug": {"request_id": request_id},
             },
             status=500,
         )
@@ -1800,7 +1802,7 @@ async def fetch_llm_health() -> dict:
         status_code = response.status_code
         if status_code == 503:
             status = "warming_up"
-        elif status_code in {200, 400, 405}:
+        elif status_code == 200:
             status = "ok"
         else:
             status = "down"
@@ -1820,14 +1822,14 @@ async def fetch_llm_health() -> dict:
 
 
 async def call_llm_with_retry(payload: dict) -> tuple[Optional[httpx.Response], Optional[dict]]:
-    backoff_schedule = [0.5, 1, 2, 4, 6, 8]
-    max_attempts = len(backoff_schedule) + 1
-    max_attempts_5xx = 3
+    backoff_schedule = [0.5, 1, 2, 4, 8, 16]
+    max_attempts = len(backoff_schedule)
 
     last_error: Optional[dict] = None
-    async with httpx.AsyncClient(timeout=120.0) as client:
+    async with httpx.AsyncClient(timeout=30.0) as client:
         for attempt in range(1, max_attempts + 1):
             attempt_start = time.monotonic()
+            should_retry = False
             try:
                 response = await client.post(LLM_BACKEND_URL, json=payload)
                 elapsed = time.monotonic() - attempt_start
@@ -1844,20 +1846,22 @@ async def call_llm_with_retry(payload: dict) -> tuple[Optional[httpx.Response], 
                     last_error = {
                         "status": 503,
                         "payload": {
-                            "error": "llm_warmup",
-                            "detail": "LLM sta inizializzando, riprova tra 10s.",
+                            "status": "error",
+                            "code": "LLM_WARMING_UP",
+                            "message": "LLM sta inizializzando, riprova tra qualche secondo.",
                         },
                     }
+                    should_retry = True
                 elif status_code >= 500:
                     last_error = {
                         "status": 502,
                         "payload": {
-                            "error": "llm_error",
-                            "detail": f"LLM error (HTTP {status_code}).",
+                            "status": "error",
+                            "code": "LLM_ERROR",
+                            "message": f"LLM error (HTTP {status_code}).",
                         },
                     }
-                    if attempt >= max_attempts_5xx:
-                        return None, last_error
+                    should_retry = True
                 else:
                     return response, None
             except (httpx.ConnectError, httpx.TimeoutException) as exc:
@@ -1870,12 +1874,14 @@ async def call_llm_with_retry(payload: dict) -> tuple[Optional[httpx.Response], 
                     exc,
                 )
                 last_error = {
-                    "status": 502,
+                    "status": 503,
                     "payload": {
-                        "error": "llm_unreachable",
-                        "detail": "Impossibile contattare LLM, verifica che il server sia attivo.",
+                        "status": "error",
+                        "code": "LLM_UNREACHABLE",
+                        "message": "Impossibile contattare LLM, verifica che il server sia attivo.",
                     },
                 }
+                should_retry = True
             except httpx.HTTPError as exc:
                 elapsed = time.monotonic() - attempt_start
                 logger.warning(
@@ -1886,22 +1892,27 @@ async def call_llm_with_retry(payload: dict) -> tuple[Optional[httpx.Response], 
                     exc,
                 )
                 last_error = {
-                    "status": 502,
+                    "status": 503,
                     "payload": {
-                        "error": "llm_unreachable",
-                        "detail": "Errore HTTP nel contattare LLM.",
+                        "status": "error",
+                        "code": "LLM_UNREACHABLE",
+                        "message": "Errore HTTP nel contattare LLM.",
                     },
                 }
+                should_retry = True
 
-            if attempt < max_attempts:
+            if attempt < max_attempts and should_retry:
                 wait_time = backoff_schedule[attempt - 1]
                 await asyncio.sleep(wait_time)
+            elif not should_retry:
+                break
 
     return None, last_error or {
-        "status": 502,
+        "status": 503,
         "payload": {
-            "error": "llm_unreachable",
-            "detail": "Impossibile contattare LLM.",
+            "status": "error",
+            "code": "LLM_UNREACHABLE",
+            "message": "Impossibile contattare LLM.",
         },
     }
 
