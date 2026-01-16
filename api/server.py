@@ -15,7 +15,12 @@ from aiohttp import web
 from openpyxl import load_workbook
 from openpyxl.utils.exceptions import InvalidFileException
 
-from api.analytics import get_customer_analytics
+from api.analytics import (
+    ANALYTICS_TZ_NAME,
+    get_customer_analytics,
+    get_orders_debug_info,
+    get_orders_for_customer,
+)
 from .db import (
     clear_discount_rules_for_offer_segment,
     create_session_with_expiry,
@@ -819,17 +824,40 @@ async def admin_customer_analytics(request: web.Request) -> web.Response:
         return web.json_response({"status": "error", "message": "Cliente non trovato"}, status=404)
 
     refresh_flag = str(request.rel_url.query.get("refresh", "")).lower() == "true"
+    debug_flag = str(request.rel_url.query.get("debug", "")).lower() == "true"
     try:
         analytics = await get_customer_analytics(
             customer_id_int,
             client.get("email"),
             refresh=refresh_flag,
         )
+        if debug_flag:
+            orders = get_orders_for_customer(
+                customer_id_int,
+                client.get("email"),
+                client_name=client.get("ragione_sociale") or client.get("name"),
+                client_record=client,
+            )
+            debug_info = get_orders_debug_info(orders, customer_id_int, client.get("email"))
+            debug_info["timezone"] = ANALYTICS_TZ_NAME
+            analytics = dict(analytics)
+            analytics["debug"] = debug_info
         return web.json_response(analytics)
     except Exception as exc:  # pragma: no cover - logging path
         logger.exception("Errore nel calcolo analytics per cliente %s", customer_id)
+        message = str(exc)
+        error_code = "analytics_failed"
+        details = "Errore nel calcolo analytics."
+        if isinstance(exc, TypeError) and "offset-naive" in message:
+            error_code = "analytics_failed_timezone"
+            details = "Errore nel calcolo analytics (timezone non coerente)."
         return web.json_response(
-            {"status": "error", "message": "analytics_failed", "details": str(exc)},
+            {
+                "status": "error",
+                "message": "analytics_failed",
+                "error_code": error_code,
+                "details": details,
+            },
             status=500,
         )
 

@@ -2,7 +2,7 @@ import unittest
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock, patch
 
-from api.analytics import compute_sales_metrics, get_customer_analytics, reset_cache
+from api.analytics import ANALYTICS_TZ, compute_sales_metrics, get_customer_analytics, reset_cache
 
 
 class SalesMetricsTests(unittest.TestCase):
@@ -22,6 +22,23 @@ class SalesMetricsTests(unittest.TestCase):
         categories = {c["name"]: c["total"] for c in stats["categories"]}
         self.assertIn("Office", categories)
         self.assertEqual(categories.get("Consumabili"), 200)
+
+    def test_compute_sales_metrics_handles_naive_and_aware_dates(self):
+        now = datetime.now(ANALYTICS_TZ).replace(day=15, hour=10, minute=0, second=0, microsecond=0)
+        last_month = now - timedelta(days=32)
+        naive_date = now.replace(tzinfo=None).isoformat()
+        aware_date = now.astimezone(timezone.utc).isoformat().replace("+00:00", "Z")
+        orders = [
+            {"order_date": naive_date, "total_amount": 120, "cause": "Office"},
+            {"order_date": aware_date, "total_amount": 80, "cause": "Office"},
+            {"order_date": last_month.isoformat(), "total_amount": 50, "cause": "Consumabili"},
+        ]
+
+        stats = compute_sales_metrics(orders)
+        self.assertAlmostEqual(stats["period"]["current_month_total"], 200)
+        self.assertAlmostEqual(stats["period"]["last_3_months_total"], 50)
+        categories = {c["name"]: c["total"] for c in stats["categories"]}
+        self.assertEqual(categories.get("Office"), 200)
 
 
 class AnalyticsCacheTests(unittest.IsolatedAsyncioTestCase):
