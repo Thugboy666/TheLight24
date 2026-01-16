@@ -20,21 +20,22 @@ except Exception:  # pragma: no cover - zoneinfo fallback
     ANALYTICS_TZ_NAME = "UTC"
 
 
-def _parse_order_date(value: Optional[Any]) -> Optional[datetime]:
+def parse_order_datetime(value: Optional[Any]) -> Optional[datetime]:
     if not value:
         return None
+    dt: Optional[datetime]
     if isinstance(value, datetime):
-        return value
-    try:
-        clean_value = str(value).replace("Z", "+00:00")
-        return datetime.fromisoformat(clean_value)
-    except Exception:
-        return None
-
-
-def _ensure_aware(dt: Optional[datetime]) -> Optional[datetime]:
-    if dt is None:
-        return None
+        dt = value
+    else:
+        text = str(value).strip()
+        if not text:
+            return None
+        if text.endswith("Z"):
+            text = f"{text[:-1]}+00:00"
+        try:
+            dt = datetime.fromisoformat(text)
+        except Exception:
+            return None
     if dt.tzinfo is None or dt.tzinfo.utcoffset(dt) is None:
         return dt.replace(tzinfo=ANALYTICS_TZ)
     return dt.astimezone(ANALYTICS_TZ)
@@ -83,10 +84,9 @@ def get_orders_for_customer(
 def get_orders_debug_info(orders: List[Dict[str, Any]], customer_id: Any, customer_email: Optional[str]) -> Dict[str, Any]:
     dates: List[datetime] = []
     for order in orders:
-        parsed = _parse_order_date(order.get("order_date"))
-        aware = _ensure_aware(parsed)
-        if aware:
-            dates.append(aware)
+        parsed = parse_order_datetime(order.get("order_date"))
+        if parsed:
+            dates.append(parsed)
     first = min(dates) if dates else None
     last = max(dates) if dates else None
     return {
@@ -114,18 +114,23 @@ def compute_sales_metrics(orders: List[Dict[str, Any]]) -> Dict[str, Any]:
     monthly_totals: Dict[str, float] = defaultdict(float)
     category_totals: Dict[str, float] = defaultdict(float)
     current_month_total = 0.0
+    total_orders_count = len(orders)
+    parsed_orders_count = 0
+    invalid_dates_count = 0
 
     for order in orders:
         amount = float(order.get("total_amount") or 0)
-        parsed_dt = _parse_order_date(order.get("order_date"))
-        dt = _ensure_aware(parsed_dt)
+        dt = parse_order_datetime(order.get("order_date"))
         cat = (order.get("cause") or order.get("status") or "Generale").strip()
         category_totals[cat] += amount
         if dt:
+            parsed_orders_count += 1
             key = _month_key(dt)
             monthly_totals[key] += amount
             if dt >= start_current_month:
                 current_month_total += amount
+        else:
+            invalid_dates_count += 1
 
     last_three_months_total = 0.0
     prev_months_totals: List[float] = []
@@ -160,6 +165,11 @@ def compute_sales_metrics(orders: List[Dict[str, Any]]) -> Dict[str, Any]:
         },
         "categories": sorted_categories,
         "margin": {"average_margin_percent": margin_percent},
+        "debug": {
+            "invalid_dates_count": invalid_dates_count,
+            "total_orders_count": total_orders_count,
+            "parsed_orders_count": parsed_orders_count,
+        },
     }
 
 
@@ -246,6 +256,7 @@ async def get_customer_analytics(
         "categories": stats["categories"],
         "margin": stats["margin"],
         "ai": ai_block,
+        "debug": stats.get("debug", {}),
         "cached": False,
         "generated_at": datetime.now(timezone.utc).isoformat(),
     }
@@ -261,6 +272,7 @@ __all__ = [
     "ANALYTICS_CACHE_TTL_MINUTES",
     "ANALYTICS_TZ",
     "ANALYTICS_TZ_NAME",
+    "parse_order_datetime",
     "get_orders_for_customer",
     "get_orders_debug_info",
 ]

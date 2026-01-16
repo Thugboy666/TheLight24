@@ -3387,9 +3387,13 @@
       li.textContent = sugg;
       analyticsUpsell.appendChild(li);
     });
-    analyticsGeneratedAt.textContent = data.generated_at ? `Aggiornato alle ${new Date(data.generated_at).toLocaleTimeString()}` : "";
+    const genText = data.generated_at ? `Generato alle ${new Date(data.generated_at).toLocaleString()}` : "";
+    analyticsGeneratedAt.textContent = genText;
     analyticsCacheLabel.textContent = data.cached ? "Dato in cache (usa Ricalcola per aggiornare)." : "";
     renderAnalyticsCharts(data);
+    if (data?.debug?.status) {
+      analyticsStatus.textContent = `Stato LLM: ${data.debug.status}`;
+    }
   }
 
   async function fetchCustomerAnalytics(forceRefresh = false) {
@@ -3423,20 +3427,31 @@
     const url = `/api/analytics/customer/${customerId}${forceRefresh ? "?refresh=true" : ""}`;
     try {
       const res = await fetch(url, { headers });
+      const isJson = res.headers.get("content-type")?.includes("application/json");
+      const payload = isJson ? await res.json() : null;
       if (!res.ok) {
-        const errorBody = await res.text();
-        console.error("Errore analytics HTTP", res.status, errorBody);
-        analyticsStatus.textContent = "IMPOSSIBILE OTTENERE ANALYTICS";
-        alert("IMPOSSIBILE OTTENERE ANALYTICS");
+        console.error("Errore analytics HTTP", res.status, payload);
+        if (res.status === 401) {
+          analyticsStatus.textContent = "Non autorizzato (token admin mancante).";
+        } else if (res.status === 404) {
+          analyticsStatus.textContent = "Cliente non trovato.";
+        } else if (res.status === 503) {
+          analyticsStatus.textContent = "LLM in avvio o offline. Riprova tra poco.";
+        } else if (res.status === 500) {
+          const requestId = payload?.debug?.request_id ? ` (richiesta ${payload.debug.request_id})` : "";
+          analyticsStatus.textContent = `Errore analytics${requestId}.`;
+        } else {
+          analyticsStatus.textContent = "Errore analytics.";
+        }
         return;
       }
-      const json = await res.json();
-      renderAnalyticsResults(json);
-      analyticsStatus.textContent = "Riepilogo aggiornato";
+      renderAnalyticsResults(payload);
+      if (!payload?.debug?.status) {
+        analyticsStatus.textContent = "Riepilogo aggiornato";
+      }
     } catch (err) {
       console.error("Errore analytics", err);
-      analyticsStatus.textContent = "IMPOSSIBILE OTTENERE ANALYTICS";
-      alert("IMPOSSIBILE OTTENERE ANALYTICS");
+      analyticsStatus.textContent = "Errore analytics. Verifica la connessione.";
     }
   }
 
