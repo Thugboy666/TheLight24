@@ -40,3 +40,12 @@ data/db/*.sqlite3
 data/db/*.db
 data/db/*.sqlite
 data/db/*.sqlite3
+runtime/
+run/
+*.pid
+*.log
+*.gguf
+*.db
+.env
+.venv/
+venv/
