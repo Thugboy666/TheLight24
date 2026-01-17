@@ -21,7 +21,7 @@ function Load-DotEnv($Path) {
         if ($parts.Count -ne 2) { return }
         $name = $parts[0].Trim()
         $value = $parts[1].Trim().Trim('"')
-        if ($name) { $env:$name = $value }
+	if ($name) { Set-Item -Path ("Env:{0}" -f $name) -Value $value }
     }
 }
 
