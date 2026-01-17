@@ -49,3 +49,4 @@ run/
 .env
 .venv/
 venv/
+llm/llama.cpp/
