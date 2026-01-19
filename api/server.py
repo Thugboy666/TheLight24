@@ -64,6 +64,25 @@ from .db import (
     delete_daily_offer,
     get_meta_value,
 )
+from .prioritypro_engine import (
+    build_prioritypro_results,
+    export_prioritypro_csv,
+    export_prioritypro_xlsx,
+    parse_prioritypro_orders_xlsx,
+    parse_prioritypro_state_xlsx,
+)
+from .prioritypro_storage import (
+    AUDIT_FILE,
+    EXPORTS_DIR,
+    load_prioritypro_config,
+    load_prioritypro_import_data,
+    load_prioritypro_last_run,
+    log_prioritypro_event,
+    save_prioritypro_config,
+    save_prioritypro_import_data,
+    save_prioritypro_last_run,
+)
+from .xlsx_utils import normalize_header, safe_float, safe_int
 
 # ================== CONFIG BASE ==================
 
@@ -321,56 +340,6 @@ async def dispatch_notification(
 def _serialize_notification_for_client(notification: dict) -> dict:
     serialized = {k: v for k, v in notification.items() if k != "delivered_to"}
     return serialized
-
-
-def normalize_header(value: str) -> str:
-    if not value:
-        return ""
-    return (
-        str(value)
-        .strip()
-        .lower()
-        .replace("à", "a")
-        .replace("è", "e")
-        .replace("é", "e")
-        .replace("ì", "i")
-        .replace("ò", "o")
-        .replace("ù", "u")
-    )
-
-
-def safe_float(value, default=0.0):
-    if value is None:
-        return default
-    s = str(value).strip()
-    if not s:
-        return default
-    s = s.replace(" ", "").replace("€", "")
-    if s.count(",") == 1 and s.count(".") == 0:
-        s = s.replace(",", ".")
-    try:
-        return float(s)
-    except ValueError:
-        return default
-
-
-def safe_int(value, default=0):
-    if value is None:
-        return default
-    s = str(value).strip()
-    if not s:
-        return default
-
-    s_upper = s.upper()
-    if s_upper in {"N", "NA", "N/A", "ND", "-", "NON DISPONIBILE"}:
-        return default
-    s_clean = s.replace(" ", "")
-    if s_clean.replace(".", "").replace(",", "").isdigit():
-        s_clean = s_clean.replace(".", "").replace(",", "")
-    try:
-        return int(s_clean)
-    except ValueError:
-        return default
 
 
 def discount_rules_to_configs() -> list[dict]:
@@ -1383,6 +1352,244 @@ async def admin_offers_save(request: web.Request) -> web.Response:
     return web.json_response({"status": "ok", "config": body})
 
 
+async def _read_prioritypro_upload(
+    request: web.Request,
+) -> tuple[bytes, str, Optional[web.Response]]:
+    data = await request.post()
+    upfile = data.get("file")
+    if not upfile:
+        return b"", "", web.json_response(
+            {"status": "error", "reason": "missing_file"}, status=400
+        )
+
+    filename = getattr(upfile, "filename", "") or ""
+    if not filename or "." not in filename:
+        return b"", "", web.json_response(
+            {"status": "error", "reason": "invalid_filename"}, status=400
+        )
+
+    ext = Path(filename).suffix.lower()
+    if ext not in {".xls", ".xlsx"}:
+        return b"", "", web.json_response(
+            {"status": "error", "reason": "unsupported_extension"}, status=400
+        )
+    if ext == ".xls":
+        return b"", "", web.json_response(
+            {
+                "status": "error",
+                "reason": "xls_not_supported",
+                "message": "Salva il file in formato .xlsx e riprova.",
+            },
+            status=400,
+        )
+
+    try:
+        file_bytes = upfile.file.read() if hasattr(upfile, "file") else upfile.read()
+    except Exception as exc:  # noqa: BLE001
+        logger.exception("PriorityPro import: unable to read file %s: %s", filename, exc)
+        return b"", "", web.json_response(
+            {"status": "error", "reason": "read_error"}, status=400
+        )
+
+    if not file_bytes:
+        return b"", "", web.json_response(
+            {"status": "error", "reason": "empty_file"}, status=400
+        )
+
+    return file_bytes, filename, None
+
+
+async def admin_prioritypro_get_config(request: web.Request) -> web.Response:
+    _, error = require_admin_user(request)
+    if error:
+        return error
+    config = load_prioritypro_config()
+    return web.json_response({"status": "ok", "config": config})
+
+
+async def admin_prioritypro_save_config(request: web.Request) -> web.Response:
+    _, error = require_admin_user(request)
+    if error:
+        return error
+    body = await request.json()
+    saved = save_prioritypro_config(body or {})
+    log_prioritypro_event(
+        "config_save",
+        {"keys": list((body or {}).keys())},
+    )
+    return web.json_response({"status": "ok", "config": saved})
+
+
+async def admin_prioritypro_import_state(request: web.Request) -> web.Response:
+    _, error = require_admin_user(request)
+    if error:
+        return error
+    file_bytes, filename, error_response = await _read_prioritypro_upload(request)
+    if error_response:
+        return error_response
+
+    config = load_prioritypro_config()
+    try:
+        records, stats = parse_prioritypro_state_xlsx(
+            file_bytes, config.get("mappings", {}).get("state", {})
+        )
+    except ValueError:
+        logger.exception("PriorityPro import state: invalid Excel %s", filename)
+        return web.json_response(
+            {"status": "error", "reason": "invalid_excel"}, status=400
+        )
+
+    payload = save_prioritypro_import_data(
+        "state",
+        records,
+        stats.__dict__,
+        filename,
+    )
+    log_prioritypro_event(
+        "import_state",
+        {"filename": filename, "processed": stats.processed, "valid": stats.valid},
+    )
+    logger.info(
+        "PriorityPro import state: %s processed=%s valid=%s",
+        filename,
+        stats.processed,
+        stats.valid,
+    )
+    return web.json_response({"status": "ok", "import": payload})
+
+
+async def admin_prioritypro_import_orders(request: web.Request) -> web.Response:
+    _, error = require_admin_user(request)
+    if error:
+        return error
+    file_bytes, filename, error_response = await _read_prioritypro_upload(request)
+    if error_response:
+        return error_response
+
+    config = load_prioritypro_config()
+    try:
+        records, stats = parse_prioritypro_orders_xlsx(
+            file_bytes,
+            config.get("mappings", {}).get("orders", {}),
+            config.get("reman_subcategory_match", "remanufactured"),
+        )
+    except ValueError:
+        logger.exception("PriorityPro import orders: invalid Excel %s", filename)
+        return web.json_response(
+            {"status": "error", "reason": "invalid_excel"}, status=400
+        )
+
+    payload = save_prioritypro_import_data(
+        "orders",
+        records,
+        stats.__dict__,
+        filename,
+    )
+    log_prioritypro_event(
+        "import_orders",
+        {"filename": filename, "processed": stats.processed, "valid": stats.valid},
+    )
+    logger.info(
+        "PriorityPro import orders: %s processed=%s valid=%s",
+        filename,
+        stats.processed,
+        stats.valid,
+    )
+    return web.json_response({"status": "ok", "import": payload})
+
+
+async def admin_prioritypro_run(request: web.Request) -> web.Response:
+    _, error = require_admin_user(request)
+    if error:
+        return error
+    config = load_prioritypro_config()
+    state_data = load_prioritypro_import_data("state")
+    orders_data = load_prioritypro_import_data("orders")
+    if not state_data or not orders_data:
+        return web.json_response(
+            {"status": "error", "message": "Importa prima i file stato e ordini."},
+            status=400,
+        )
+
+    state_records = state_data.get("records") or []
+    order_records = orders_data.get("records") or []
+    results, summary = build_prioritypro_results(
+        state_records,
+        order_records,
+        config,
+    )
+    results.sort(key=lambda r: (r.get("ragione_sociale") or "", r.get("customer_id") or ""))
+
+    csv_path = EXPORTS_DIR / "prioritypro_export.csv"
+    xlsx_path = EXPORTS_DIR / "prioritypro_export.xlsx"
+    export_prioritypro_csv(results, csv_path)
+    export_prioritypro_xlsx(results, xlsx_path)
+
+    run_payload = {
+        "generated_at": now_iso(),
+        "summary": summary,
+        "exports": {"csv": str(csv_path), "xlsx": str(xlsx_path)},
+    }
+    save_prioritypro_last_run(run_payload)
+    log_prioritypro_event(
+        "run",
+        {
+            "customers": summary.get("customers"),
+            "aderito": summary.get("aderito"),
+            "reman_customers": summary.get("reman_customers"),
+        },
+    )
+    logger.info(
+        "PriorityPro run: customers=%s aderito=%s",
+        summary.get("customers"),
+        summary.get("aderito"),
+    )
+    return web.json_response(
+        {"status": "ok", "summary": summary, "results": results}
+    )
+
+
+async def admin_prioritypro_export(request: web.Request) -> web.Response:
+    _, error = require_admin_user(request)
+    if error:
+        return error
+    fmt = (request.query.get("format") or "csv").lower()
+    last_run = load_prioritypro_last_run()
+    if not last_run:
+        return web.json_response(
+            {"status": "error", "message": "Nessun export disponibile."}, status=404
+        )
+    export_path = last_run.get("exports", {}).get(fmt)
+    if not export_path:
+        return web.json_response(
+            {"status": "error", "message": "Formato non disponibile."}, status=400
+        )
+    path = Path(export_path)
+    if not path.exists():
+        return web.json_response(
+            {"status": "error", "message": "File export non trovato."}, status=404
+        )
+    return web.FileResponse(path)
+
+
+async def admin_prioritypro_audit(request: web.Request) -> web.Response:
+    _, error = require_admin_user(request)
+    if error:
+        return error
+    audit_entries: list[dict[str, Any]] = []
+    if AUDIT_FILE.exists():
+        try:
+            lines = AUDIT_FILE.read_text(encoding="utf-8").splitlines()
+            for line in lines[-100:]:
+                try:
+                    audit_entries.append(json.loads(line))
+                except json.JSONDecodeError:
+                    continue
+        except Exception:  # noqa: BLE001
+            logger.exception("PriorityPro audit read failed")
+    return web.json_response({"status": "ok", "audit": audit_entries})
+
+
 async def admin_products_all(request: web.Request) -> web.Response:
     logger.info("admin_products_all from %s", request.remote)
     try:
@@ -2132,6 +2339,13 @@ def create_app() -> web.Application:
     app.router.add_post("/admin/save/promo", admin_save_promo)
     app.router.add_post("/admin/promo/add_points", admin_promo_add_points)
     app.router.add_get("/admin/promo/summary", admin_promo_summary)
+    app.router.add_get("/admin/prioritypro/config", admin_prioritypro_get_config)
+    app.router.add_post("/admin/prioritypro/config", admin_prioritypro_save_config)
+    app.router.add_post("/admin/prioritypro/import/state", admin_prioritypro_import_state)
+    app.router.add_post("/admin/prioritypro/import/orders", admin_prioritypro_import_orders)
+    app.router.add_post("/admin/prioritypro/run", admin_prioritypro_run)
+    app.router.add_get("/admin/prioritypro/export", admin_prioritypro_export)
+    app.router.add_get("/admin/prioritypro/audit", admin_prioritypro_audit)
     app.router.add_get("/admin/offers/all", admin_offers_all)
     app.router.add_post("/admin/offers/save", admin_offers_save)
     app.router.add_post("/admin/save/macro_offers", admin_save_macro_offers)

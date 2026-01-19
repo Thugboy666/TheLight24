@@ -1591,6 +1591,7 @@
         <button class="btn secondary" id="admin-tab-offers">Macro Offerte</button>
         <button class="btn secondary" id="admin-tab-import">Import Listino</button>
         <button class="btn secondary" id="admin-tab-promo">Promo</button>
+        <button class="btn secondary" id="admin-tab-prioritypro">Priority &amp; Pro</button>
         <button class="btn secondary" id="admin-tab-analytics">Analytics Cliente</button>
       </div>
       <div id="admin-section-clients">
@@ -2012,6 +2013,200 @@
         </div>
         <button class="save-btn-admin" onclick="saveAdminPromo()">💾 Salva promo</button>
       </div>
+      <div id="admin-section-prioritypro" style="display:none;">
+        <h3 style="margin:4px 0;">Priority &amp; Pro</h3>
+        <div class="admin-card">
+          <h4 style="margin:4px 0;">Parametri Priority</h4>
+          <div class="two-cols">
+            <div class="field">
+              <label>Priority fee (€)</label>
+              <input id="pp-priority-fee" type="number" step="0.01" />
+            </div>
+            <div class="field">
+              <label>Markup sicurezza</label>
+              <input id="pp-markup-sicurezza" type="number" step="0.01" />
+            </div>
+          </div>
+          <div class="two-cols">
+            <div class="field">
+              <label>Spedizioni gratuite / settimana</label>
+              <input id="pp-free-shipments" type="number" step="1" />
+            </div>
+            <div class="field">
+              <label>Min ordini per media</label>
+              <input id="pp-min-orders" type="number" step="1" />
+            </div>
+          </div>
+          <div class="two-cols">
+            <div class="field">
+              <label>SMP fallback</label>
+              <input id="pp-smp-default" type="number" step="0.01" />
+            </div>
+            <div class="field">
+              <label>Round up</label>
+              <select id="pp-round-up">
+                <option value="unit">Unità</option>
+                <option value="decina">Decina</option>
+              </select>
+            </div>
+          </div>
+          <div class="two-cols">
+            <div class="field">
+              <label>Regione pilota</label>
+              <input id="pp-pilot-region" type="text" />
+            </div>
+            <div class="field">
+              <label>Soglia anti-abuso (ordini/sett.)</label>
+              <input id="pp-anti-abuse" type="number" step="1" />
+            </div>
+          </div>
+        </div>
+        <div class="admin-card" style="margin-top:10px;">
+          <h4 style="margin:4px 0;">Parametri Pro</h4>
+          <div class="two-cols">
+            <div class="field">
+              <label>€ per punto</label>
+              <input id="pp-earn-rate" type="number" step="0.01" />
+            </div>
+            <div class="field">
+              <label>Topup €→punti ratio</label>
+              <input id="pp-topup-ratio" type="number" step="0.01" />
+            </div>
+          </div>
+          <div class="two-cols">
+            <div class="field">
+              <label>Min topup mensile (€)</label>
+              <input id="pp-min-topup-monthly" type="number" step="0.01" />
+            </div>
+            <div class="field">
+              <label>Min topup annuale (€)</label>
+              <input id="pp-min-topup-yearly" type="number" step="0.01" />
+            </div>
+          </div>
+          <div class="two-cols">
+            <div class="field">
+              <label>Bonus punti (%)</label>
+              <input id="pp-bonus-pct" type="number" step="0.01" />
+            </div>
+            <div class="field">
+              <label>Max sconto (%)</label>
+              <input id="pp-max-discount" type="number" step="0.01" />
+            </div>
+          </div>
+          <div class="two-cols">
+            <div class="field">
+              <label>Scadenza punti (mesi)</label>
+              <input id="pp-expiry-months" type="number" step="1" />
+            </div>
+            <div class="field">
+              <label><input id="pp-regola-2x" type="checkbox" /> Regola 2x attiva</label>
+            </div>
+          </div>
+        </div>
+        <div class="admin-card" style="margin-top:10px;">
+          <h4 style="margin:4px 0;">Integrazione Priority + Pro</h4>
+          <div class="two-cols">
+            <div class="field">
+              <label><input id="pp-regola-punti-spedizione" type="checkbox" /> Regola punti per sconto spedizione</label>
+            </div>
+            <div class="field">
+              <label>Extra spedizione gratuita (punti)</label>
+              <input id="pp-extra-shipment-points" type="number" step="1" />
+            </div>
+          </div>
+          <div class="field">
+            <label>Priorità consumo</label>
+            <input id="pp-priorita-consumo" type="text" />
+          </div>
+        </div>
+        <div class="admin-card" style="margin-top:10px;">
+          <h4 style="margin:4px 0;">Mapping colonne</h4>
+          <p class="small-hint">Inserisci intestazioni colonne (comma-separated) per File A e File B.</p>
+          <div class="two-cols">
+            <div>
+              <h5>File A - Stato clienti</h5>
+              <div class="field"><label>customer_id</label><input id="pp-map-state-customer" type="text" /></div>
+              <div class="field"><label>ragione_sociale</label><input id="pp-map-state-ragione" type="text" /></div>
+              <div class="field"><label>piva</label><input id="pp-map-state-piva" type="text" /></div>
+              <div class="field"><label>priority_enabled</label><input id="pp-map-state-priority" type="text" /></div>
+              <div class="field"><label>pro_enabled</label><input id="pp-map-state-pro" type="text" /></div>
+              <div class="field"><label>shipments_free_used_this_week</label><input id="pp-map-state-used" type="text" /></div>
+              <div class="field"><label>shipments_free_week_start</label><input id="pp-map-state-week" type="text" /></div>
+              <div class="field"><label>points_balance_total</label><input id="pp-map-state-points-total" type="text" /></div>
+              <div class="field"><label>points_balance_earned</label><input id="pp-map-state-points-earned" type="text" /></div>
+              <div class="field"><label>points_balance_purchased</label><input id="pp-map-state-points-purchased" type="text" /></div>
+            </div>
+            <div>
+              <h5>File B - Storico ordini</h5>
+              <div class="field"><label>order_id</label><input id="pp-map-orders-id" type="text" /></div>
+              <div class="field"><label>customer_id</label><input id="pp-map-orders-customer" type="text" /></div>
+              <div class="field"><label>order_date</label><input id="pp-map-orders-date" type="text" /></div>
+              <div class="field"><label>imponibile</label><input id="pp-map-orders-imponibile" type="text" /></div>
+              <div class="field"><label>subcategoria</label><input id="pp-map-orders-subcat" type="text" /></div>
+              <div class="field"><label>Match reman</label><input id="pp-reman-match" type="text" /></div>
+            </div>
+          </div>
+          <div class="sheet-actions" style="margin-top:6px;">
+            <button class="btn" id="btn-pp-save-config">Salva parametri</button>
+          </div>
+        </div>
+        <div class="admin-card" style="margin-top:10px;">
+          <h4 style="margin:4px 0;">Importazioni XLSX</h4>
+          <div class="field">
+            <label>File A - Stato clienti</label>
+            <input id="pp-state-file" type="file" accept=".xlsx" />
+          </div>
+          <div class="sheet-actions" style="margin-top:4px;">
+            <button class="btn secondary" id="btn-pp-import-state">Importa File A</button>
+          </div>
+          <div class="field">
+            <label>File B - Storico ordini</label>
+            <input id="pp-orders-file" type="file" accept=".xlsx" />
+          </div>
+          <div class="sheet-actions" style="margin-top:4px;">
+            <button class="btn secondary" id="btn-pp-import-orders">Importa File B</button>
+          </div>
+          <div class="field">
+            <small id="pp-import-status" class="small-hint"></small>
+          </div>
+        </div>
+        <div class="admin-card" style="margin-top:10px;">
+          <h4 style="margin:4px 0;">Simulazione / Calcolo</h4>
+          <div class="sheet-actions" style="margin-top:4px;">
+            <button class="btn" id="btn-pp-run">Esegui calcolo</button>
+            <button class="btn secondary" id="btn-pp-export-csv">Export CSV</button>
+            <button class="btn secondary" id="btn-pp-export-xlsx">Export XLSX</button>
+          </div>
+          <div class="field">
+            <small id="pp-run-status" class="small-hint"></small>
+          </div>
+          <div id="pp-summary" class="html-preview"></div>
+          <div class="field">
+            <label>Filtra risultati</label>
+            <input id="pp-results-filter" type="text" placeholder="Cerca ragione sociale o P.IVA..." />
+          </div>
+          <div class="html-preview" style="max-height:240px;">
+            <table style="width:100%; font-size:11px; border-collapse:collapse;">
+              <thead>
+                <tr>
+                  <th style="text-align:left; padding:2px 4px;">Ragione sociale</th>
+                  <th style="text-align:left; padding:2px 4px;">Ha aderito</th>
+                  <th style="text-align:right; padding:2px 4px;">Punti totali</th>
+                  <th style="text-align:right; padding:2px 4px;">Spedizioni residue sett.</th>
+                </tr>
+              </thead>
+              <tbody id="pp-results-table"></tbody>
+            </table>
+          </div>
+        </div>
+        <div class="admin-card" style="margin-top:10px;">
+          <h4 style="margin:4px 0;">Log &amp; Audit</h4>
+          <div class="sheet-actions" style="margin-top:4px;">
+            <button class="btn secondary" id="btn-pp-audit-refresh">Aggiorna audit</button>
+          </div>
+          <div class="html-preview" id="pp-audit-log" style="max-height:180px;"></div>
+        </div>
+      </div>
       <div class="sheet-actions">
         <button class="btn secondary" id="btn-admin-close">Chiudi</button>
       </div>
@@ -2092,6 +2287,39 @@
     "- Porta una nuova azienda alla registrazione → 1000 punti\n" +
     "Soglie: 350 pt → 1 premio • 850 pt → 1-2 premi • massimo punti → biglietto fortunato.";
 
+  const defaultPriorityProConfig = {
+    priority: {
+      priority_fee_eur: 99,
+      markup_sicurezza: 0.4,
+      free_shipments_per_week: 1,
+      min_orders_for_avg: 3,
+      smp_default: 250,
+      round_up_mode: "unit",
+      pilot_region: "Campania",
+      anti_abuse_threshold_per_week: 3,
+    },
+    pro: {
+      earn_rate_eur_per_point: 10,
+      topup_eur_to_points_ratio: 1,
+      min_topup_monthly: 0,
+      min_topup_yearly: 0,
+      bonus_points_pct: 0,
+      max_discount_pct: 0,
+      points_expiry_months: null,
+      regola_2x_attiva: true,
+    },
+    integration: {
+      regola_punti_sconto_spedizione: true,
+      extra_free_shipment_points_cost: null,
+      priorita_consumo: "spedizione_gratis_poi_punti",
+    },
+    mappings: {
+      state: {},
+      orders: {},
+    },
+    reman_subcategory_match: "remanufactured",
+  };
+
   const adminSettings = {
     miniOfferEnabled: false,
   };
@@ -2112,6 +2340,9 @@
     rules_text: defaultPromoRulesText,
   };
   let promoActionsList = [...defaultPromoActions];
+
+  let priorityProConfig = { ...defaultPriorityProConfig };
+  let priorityProResults = [];
   let promoAdherentsList = [];
   let priceList = [];
   let dailyOffer = null;
@@ -2338,11 +2569,13 @@
   const adminTabOffers = document.getElementById("admin-tab-offers");
   const adminTabImport = document.getElementById("admin-tab-import");
   const adminTabPromo = document.getElementById("admin-tab-promo");
+  const adminTabPriorityPro = document.getElementById("admin-tab-prioritypro");
   const adminTabAnalytics = document.getElementById("admin-tab-analytics");
   const adminSectionClients = document.getElementById("admin-section-clients");
   const adminSectionOffers = document.getElementById("admin-section-offers");
   const adminSectionImport = document.getElementById("admin-section-import");
   const adminSectionPromo = document.getElementById("admin-section-promo");
+  const adminSectionPriorityPro = document.getElementById("admin-section-prioritypro");
   const adminSectionAnalytics = document.getElementById("admin-section-analytics");
   const clientsTable = document.getElementById("clients-table");
   const clientNameInput = document.getElementById("client-name");
@@ -2378,6 +2611,56 @@
   const promoClientsFileInput = document.getElementById("promo-clients-file");
   const btnPromoClientsUpload = document.getElementById("btn-promo-clients-upload");
   const promoClientsPreview = document.getElementById("promo-clients-preview");
+  const ppPriorityFeeInput = document.getElementById("pp-priority-fee");
+  const ppMarkupInput = document.getElementById("pp-markup-sicurezza");
+  const ppFreeShipmentsInput = document.getElementById("pp-free-shipments");
+  const ppMinOrdersInput = document.getElementById("pp-min-orders");
+  const ppSmpDefaultInput = document.getElementById("pp-smp-default");
+  const ppRoundUpSelect = document.getElementById("pp-round-up");
+  const ppPilotRegionInput = document.getElementById("pp-pilot-region");
+  const ppAntiAbuseInput = document.getElementById("pp-anti-abuse");
+  const ppEarnRateInput = document.getElementById("pp-earn-rate");
+  const ppTopupRatioInput = document.getElementById("pp-topup-ratio");
+  const ppMinTopupMonthlyInput = document.getElementById("pp-min-topup-monthly");
+  const ppMinTopupYearlyInput = document.getElementById("pp-min-topup-yearly");
+  const ppBonusPctInput = document.getElementById("pp-bonus-pct");
+  const ppMaxDiscountInput = document.getElementById("pp-max-discount");
+  const ppExpiryMonthsInput = document.getElementById("pp-expiry-months");
+  const ppRegola2xInput = document.getElementById("pp-regola-2x");
+  const ppRegolaPuntiSpedizioneInput = document.getElementById("pp-regola-punti-spedizione");
+  const ppExtraShipmentPointsInput = document.getElementById("pp-extra-shipment-points");
+  const ppPrioritaConsumoInput = document.getElementById("pp-priorita-consumo");
+  const ppMapStateCustomerInput = document.getElementById("pp-map-state-customer");
+  const ppMapStateRagioneInput = document.getElementById("pp-map-state-ragione");
+  const ppMapStatePivaInput = document.getElementById("pp-map-state-piva");
+  const ppMapStatePriorityInput = document.getElementById("pp-map-state-priority");
+  const ppMapStateProInput = document.getElementById("pp-map-state-pro");
+  const ppMapStateUsedInput = document.getElementById("pp-map-state-used");
+  const ppMapStateWeekInput = document.getElementById("pp-map-state-week");
+  const ppMapStatePointsTotalInput = document.getElementById("pp-map-state-points-total");
+  const ppMapStatePointsEarnedInput = document.getElementById("pp-map-state-points-earned");
+  const ppMapStatePointsPurchasedInput = document.getElementById("pp-map-state-points-purchased");
+  const ppMapOrdersIdInput = document.getElementById("pp-map-orders-id");
+  const ppMapOrdersCustomerInput = document.getElementById("pp-map-orders-customer");
+  const ppMapOrdersDateInput = document.getElementById("pp-map-orders-date");
+  const ppMapOrdersImponibileInput = document.getElementById("pp-map-orders-imponibile");
+  const ppMapOrdersSubcatInput = document.getElementById("pp-map-orders-subcat");
+  const ppRemanMatchInput = document.getElementById("pp-reman-match");
+  const btnPpSaveConfig = document.getElementById("btn-pp-save-config");
+  const ppStateFileInput = document.getElementById("pp-state-file");
+  const ppOrdersFileInput = document.getElementById("pp-orders-file");
+  const btnPpImportState = document.getElementById("btn-pp-import-state");
+  const btnPpImportOrders = document.getElementById("btn-pp-import-orders");
+  const ppImportStatus = document.getElementById("pp-import-status");
+  const btnPpRun = document.getElementById("btn-pp-run");
+  const btnPpExportCsv = document.getElementById("btn-pp-export-csv");
+  const btnPpExportXlsx = document.getElementById("btn-pp-export-xlsx");
+  const ppRunStatus = document.getElementById("pp-run-status");
+  const ppSummary = document.getElementById("pp-summary");
+  const ppResultsFilter = document.getElementById("pp-results-filter");
+  const ppResultsTable = document.getElementById("pp-results-table");
+  const btnPpAuditRefresh = document.getElementById("btn-pp-audit-refresh");
+  const ppAuditLog = document.getElementById("pp-audit-log");
   const promoClientSearchInput = document.getElementById("promo-client-search");
   const promoClientSelect = document.getElementById("promo-client-select");
   const promoClientPoints = document.getElementById("promo-client-points");
@@ -2647,6 +2930,9 @@
   if (adminTabPromo) {
     adminTabPromo.addEventListener("click", () => switchAdminTab("promo"));
   }
+  if (adminTabPriorityPro) {
+    adminTabPriorityPro.addEventListener("click", () => switchAdminTab("prioritypro"));
+  }
   if (adminTabAnalytics) {
     adminTabAnalytics.addEventListener("click", () => switchAdminTab("analytics"));
   }
@@ -2656,6 +2942,31 @@
   }
   if (btnAnalyticsRefresh) {
     btnAnalyticsRefresh.addEventListener("click", () => fetchCustomerAnalytics(true));
+  }
+
+  if (btnPpSaveConfig) {
+    btnPpSaveConfig.addEventListener("click", savePriorityProConfig);
+  }
+  if (btnPpImportState) {
+    btnPpImportState.addEventListener("click", () => uploadPriorityProFile("state"));
+  }
+  if (btnPpImportOrders) {
+    btnPpImportOrders.addEventListener("click", () => uploadPriorityProFile("orders"));
+  }
+  if (btnPpRun) {
+    btnPpRun.addEventListener("click", runPriorityProEngine);
+  }
+  if (btnPpExportCsv) {
+    btnPpExportCsv.addEventListener("click", () => downloadPriorityProExport("csv"));
+  }
+  if (btnPpExportXlsx) {
+    btnPpExportXlsx.addEventListener("click", () => downloadPriorityProExport("xlsx"));
+  }
+  if (ppResultsFilter) {
+    ppResultsFilter.addEventListener("input", () => renderPriorityProTable(priorityProResults));
+  }
+  if (btnPpAuditRefresh) {
+    btnPpAuditRefresh.addEventListener("click", loadPriorityProAudit);
   }
 
   btnClientReset.addEventListener("click", () => fillClientForm());
@@ -3097,6 +3408,27 @@
     return headers;
   }
 
+  function buildAdminHeaders(contentType = "application/json") {
+    const headers = {};
+    if (contentType) headers["Content-Type"] = contentType;
+    let adminToken = currentUser?.token || null;
+    if (!adminToken) {
+      const storedSession =
+        window.localStorage.getItem("thelight24_session") ||
+        window.sessionStorage.getItem("thelight24_session");
+      if (storedSession) {
+        try {
+          const parsed = JSON.parse(storedSession);
+          adminToken = parsed?.token || null;
+        } catch (err) {
+          console.error("Errore parsing sessione admin", err);
+        }
+      }
+    }
+    if (adminToken) headers["Authorization"] = `Bearer ${adminToken}`;
+    return headers;
+  }
+
   function getCurrentUserEmail() {
     if (currentUser && currentUser.email) {
       return currentUser.email;
@@ -3201,10 +3533,339 @@
     miniOfferPanel.appendChild(offerBox);
   }
 
+  function normalizePriorityProConfig(cfg = {}) {
+    const merged = JSON.parse(JSON.stringify(defaultPriorityProConfig));
+    ["priority", "pro", "integration", "mappings"].forEach((section) => {
+      if (cfg && cfg[section]) {
+        merged[section] = { ...merged[section], ...cfg[section] };
+      }
+    });
+    if (typeof cfg?.reman_subcategory_match === "string") {
+      merged.reman_subcategory_match = cfg.reman_subcategory_match;
+    }
+    return merged;
+  }
+
+  function mappingToInput(value) {
+    if (Array.isArray(value)) return value.join(", ");
+    if (typeof value === "string") return value;
+    return "";
+  }
+
+  function parseMappingInput(value) {
+    if (!value) return [];
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+
+  function setPriorityProConfig(cfg = {}) {
+    priorityProConfig = normalizePriorityProConfig(cfg);
+    if (!ppPriorityFeeInput) return;
+    ppPriorityFeeInput.value = priorityProConfig.priority.priority_fee_eur ?? "";
+    ppMarkupInput.value = priorityProConfig.priority.markup_sicurezza ?? "";
+    ppFreeShipmentsInput.value = priorityProConfig.priority.free_shipments_per_week ?? "";
+    ppMinOrdersInput.value = priorityProConfig.priority.min_orders_for_avg ?? "";
+    ppSmpDefaultInput.value = priorityProConfig.priority.smp_default ?? "";
+    ppRoundUpSelect.value = priorityProConfig.priority.round_up_mode || "unit";
+    ppPilotRegionInput.value = priorityProConfig.priority.pilot_region || "";
+    ppAntiAbuseInput.value = priorityProConfig.priority.anti_abuse_threshold_per_week ?? "";
+    ppEarnRateInput.value = priorityProConfig.pro.earn_rate_eur_per_point ?? "";
+    ppTopupRatioInput.value = priorityProConfig.pro.topup_eur_to_points_ratio ?? "";
+    ppMinTopupMonthlyInput.value = priorityProConfig.pro.min_topup_monthly ?? "";
+    ppMinTopupYearlyInput.value = priorityProConfig.pro.min_topup_yearly ?? "";
+    ppBonusPctInput.value = priorityProConfig.pro.bonus_points_pct ?? "";
+    ppMaxDiscountInput.value = priorityProConfig.pro.max_discount_pct ?? "";
+    ppExpiryMonthsInput.value = priorityProConfig.pro.points_expiry_months ?? "";
+    ppRegola2xInput.checked = !!priorityProConfig.pro.regola_2x_attiva;
+    ppRegolaPuntiSpedizioneInput.checked =
+      !!priorityProConfig.integration.regola_punti_sconto_spedizione;
+    ppExtraShipmentPointsInput.value =
+      priorityProConfig.integration.extra_free_shipment_points_cost ?? "";
+    ppPrioritaConsumoInput.value = priorityProConfig.integration.priorita_consumo || "";
+
+    const stateMap = priorityProConfig.mappings?.state || {};
+    ppMapStateCustomerInput.value = mappingToInput(stateMap.customer_id);
+    ppMapStateRagioneInput.value = mappingToInput(stateMap.ragione_sociale);
+    ppMapStatePivaInput.value = mappingToInput(stateMap.piva);
+    ppMapStatePriorityInput.value = mappingToInput(stateMap.priority_enabled);
+    ppMapStateProInput.value = mappingToInput(stateMap.pro_enabled);
+    ppMapStateUsedInput.value = mappingToInput(stateMap.shipments_free_used_this_week);
+    ppMapStateWeekInput.value = mappingToInput(stateMap.shipments_free_week_start);
+    ppMapStatePointsTotalInput.value = mappingToInput(stateMap.points_balance_total);
+    ppMapStatePointsEarnedInput.value = mappingToInput(stateMap.points_balance_earned);
+    ppMapStatePointsPurchasedInput.value = mappingToInput(stateMap.points_balance_purchased);
+
+    const ordersMap = priorityProConfig.mappings?.orders || {};
+    ppMapOrdersIdInput.value = mappingToInput(ordersMap.order_id);
+    ppMapOrdersCustomerInput.value = mappingToInput(ordersMap.customer_id);
+    ppMapOrdersDateInput.value = mappingToInput(ordersMap.order_date);
+    ppMapOrdersImponibileInput.value = mappingToInput(ordersMap.imponibile);
+    ppMapOrdersSubcatInput.value = mappingToInput(ordersMap.subcategoria);
+    ppRemanMatchInput.value = priorityProConfig.reman_subcategory_match || "";
+  }
+
+  function collectPriorityProConfig() {
+    return {
+      priority: {
+        priority_fee_eur: Number(ppPriorityFeeInput?.value || 0),
+        markup_sicurezza: Number(ppMarkupInput?.value || 0),
+        free_shipments_per_week: Number(ppFreeShipmentsInput?.value || 0),
+        min_orders_for_avg: Number(ppMinOrdersInput?.value || 0),
+        smp_default: Number(ppSmpDefaultInput?.value || 0),
+        round_up_mode: ppRoundUpSelect?.value || "unit",
+        pilot_region: ppPilotRegionInput?.value || "",
+        anti_abuse_threshold_per_week: Number(ppAntiAbuseInput?.value || 0),
+      },
+      pro: {
+        earn_rate_eur_per_point: Number(ppEarnRateInput?.value || 0),
+        topup_eur_to_points_ratio: Number(ppTopupRatioInput?.value || 0),
+        min_topup_monthly: Number(ppMinTopupMonthlyInput?.value || 0),
+        min_topup_yearly: Number(ppMinTopupYearlyInput?.value || 0),
+        bonus_points_pct: Number(ppBonusPctInput?.value || 0),
+        max_discount_pct: Number(ppMaxDiscountInput?.value || 0),
+        points_expiry_months: ppExpiryMonthsInput?.value
+          ? Number(ppExpiryMonthsInput.value)
+          : null,
+        regola_2x_attiva: !!ppRegola2xInput?.checked,
+      },
+      integration: {
+        regola_punti_sconto_spedizione: !!ppRegolaPuntiSpedizioneInput?.checked,
+        extra_free_shipment_points_cost: ppExtraShipmentPointsInput?.value
+          ? Number(ppExtraShipmentPointsInput.value)
+          : null,
+        priorita_consumo: ppPrioritaConsumoInput?.value || "",
+      },
+      mappings: {
+        state: {
+          customer_id: parseMappingInput(ppMapStateCustomerInput?.value),
+          ragione_sociale: parseMappingInput(ppMapStateRagioneInput?.value),
+          piva: parseMappingInput(ppMapStatePivaInput?.value),
+          priority_enabled: parseMappingInput(ppMapStatePriorityInput?.value),
+          pro_enabled: parseMappingInput(ppMapStateProInput?.value),
+          shipments_free_used_this_week: parseMappingInput(ppMapStateUsedInput?.value),
+          shipments_free_week_start: parseMappingInput(ppMapStateWeekInput?.value),
+          points_balance_total: parseMappingInput(ppMapStatePointsTotalInput?.value),
+          points_balance_earned: parseMappingInput(ppMapStatePointsEarnedInput?.value),
+          points_balance_purchased: parseMappingInput(ppMapStatePointsPurchasedInput?.value),
+        },
+        orders: {
+          order_id: parseMappingInput(ppMapOrdersIdInput?.value),
+          customer_id: parseMappingInput(ppMapOrdersCustomerInput?.value),
+          order_date: parseMappingInput(ppMapOrdersDateInput?.value),
+          imponibile: parseMappingInput(ppMapOrdersImponibileInput?.value),
+          subcategoria: parseMappingInput(ppMapOrdersSubcatInput?.value),
+        },
+      },
+      reman_subcategory_match: ppRemanMatchInput?.value || "",
+    };
+  }
+
+  function renderPriorityProSummary(summary = {}) {
+    if (!ppSummary) return;
+    const html = `
+      <strong>Riepilogo</strong><br />
+      Clienti: ${summary.customers || 0} · Aderenti: ${summary.aderito || 0}<br />
+      Reman: ${summary.reman_customers || 0} · Alert abuso: ${summary.abuse_flags || 0}
+    `;
+    ppSummary.innerHTML = html;
+  }
+
+  function renderPriorityProTable(results = []) {
+    if (!ppResultsTable) return;
+    ppResultsTable.innerHTML = "";
+    const filter = (ppResultsFilter?.value || "").toLowerCase();
+    results
+      .filter((row) => {
+        const name = (row.ragione_sociale || "").toLowerCase();
+        const piva = (row.piva || "").toLowerCase();
+        return !filter || name.includes(filter) || piva.includes(filter);
+      })
+      .forEach((row) => {
+        const tr = document.createElement("tr");
+        tr.innerHTML = `
+          <td style="padding:2px 4px;">${row.ragione_sociale || ""}</td>
+          <td style="padding:2px 4px;">${row.ha_aderito || "No"}</td>
+          <td style="padding:2px 4px; text-align:right;">${row.points_balance_total || 0}</td>
+          <td style="padding:2px 4px; text-align:right;">${row.shipments_free_remaining || 0}</td>
+        `;
+        ppResultsTable.appendChild(tr);
+      });
+  }
+
+  async function loadPriorityProConfig() {
+    if (!currentUser.is_admin) {
+      if (ppRunStatus) ppRunStatus.textContent = "Solo admin";
+      return;
+    }
+    try {
+      const res = await fetch("/admin/prioritypro/config", {
+        headers: buildAdminHeaders(),
+      });
+      if (!res.ok) {
+        showToast("Errore caricamento config Priority & Pro", false);
+        return;
+      }
+      const payload = await res.json();
+      setPriorityProConfig(payload.config || {});
+    } catch (err) {
+      console.error("Errore loadPriorityProConfig", err);
+      showToast("Errore caricamento config Priority & Pro", false);
+    }
+  }
+
+  async function savePriorityProConfig() {
+    if (!currentUser.is_admin) return;
+    const payload = collectPriorityProConfig();
+    try {
+      const res = await fetch("/admin/prioritypro/config", {
+        method: "POST",
+        headers: buildAdminHeaders(),
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast("Errore salvataggio config", false);
+        return;
+      }
+      setPriorityProConfig(data.config || payload);
+      showToast("Config Priority & Pro salvata", true);
+    } catch (err) {
+      console.error("Errore savePriorityProConfig", err);
+      showToast("Errore salvataggio config", false);
+    }
+  }
+
+  async function uploadPriorityProFile(kind) {
+    const input = kind === "state" ? ppStateFileInput : ppOrdersFileInput;
+    if (!input || !input.files || !input.files[0]) {
+      showToast("Seleziona un file .xlsx", false);
+      return;
+    }
+    const file = input.files[0];
+    if (!file.name.endsWith(".xlsx")) {
+      showToast("Carica un file Excel in formato .xlsx", false);
+      return;
+    }
+    const formData = new FormData();
+    formData.append("file", file);
+    if (ppImportStatus) ppImportStatus.textContent = "Caricamento in corso...";
+    try {
+      const res = await fetch(`/admin/prioritypro/import/${kind}`, {
+        method: "POST",
+        headers: buildAdminHeaders(null),
+        body: formData,
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        ppImportStatus.textContent = "Errore import.";
+        showToast("Errore import Priority & Pro", false);
+        return;
+      }
+      const stats = data.import?.stats || {};
+      ppImportStatus.textContent = `Import ${kind} completato: ${stats.valid || 0}/${stats.processed || 0} righe valide.`;
+      showToast("Import completato", true);
+    } catch (err) {
+      console.error("Errore uploadPriorityProFile", err);
+      ppImportStatus.textContent = "Errore import.";
+      showToast("Errore import Priority & Pro", false);
+    }
+  }
+
+  async function runPriorityProEngine() {
+    if (!currentUser.is_admin) return;
+    if (ppRunStatus) ppRunStatus.textContent = "Calcolo in corso...";
+    try {
+      const res = await fetch("/admin/prioritypro/run", {
+        method: "POST",
+        headers: buildAdminHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        ppRunStatus.textContent = data.message || "Errore calcolo.";
+        showToast("Errore calcolo Priority & Pro", false);
+        return;
+      }
+      priorityProResults = data.results || [];
+      renderPriorityProSummary(data.summary || {});
+      renderPriorityProTable(priorityProResults);
+      ppRunStatus.textContent = "Calcolo completato.";
+      showToast("Calcolo completato", true);
+    } catch (err) {
+      console.error("Errore runPriorityProEngine", err);
+      ppRunStatus.textContent = "Errore calcolo.";
+      showToast("Errore calcolo Priority & Pro", false);
+    }
+  }
+
+  async function downloadPriorityProExport(format) {
+    try {
+      const res = await fetch(`/admin/prioritypro/export?format=${format}`, {
+        headers: buildAdminHeaders(),
+      });
+      if (!res.ok) {
+        showToast("Export non disponibile", false);
+        return;
+      }
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `prioritypro_export.${format}`;
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Errore downloadPriorityProExport", err);
+      showToast("Errore export Priority & Pro", false);
+    }
+  }
+
+  async function loadPriorityProAudit() {
+    try {
+      const res = await fetch("/admin/prioritypro/audit", {
+        headers: buildAdminHeaders(),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        showToast("Errore audit Priority & Pro", false);
+        return;
+      }
+      const entries = data.audit || [];
+      if (ppAuditLog) {
+        ppAuditLog.innerHTML = entries
+          .map((entry) => {
+            const ts = entry.timestamp ? new Date(entry.timestamp).toLocaleString() : "-";
+            const action = entry.action || "-";
+            return `<div><strong>${ts}</strong> — ${action}</div>`;
+          })
+          .join("");
+      }
+    } catch (err) {
+      console.error("Errore loadPriorityProAudit", err);
+    }
+  }
+
   function switchAdminTab(target) {
-    [adminSectionClients, adminSectionOffers, adminSectionImport, adminSectionPromo, adminSectionAnalytics]
+    [
+      adminSectionClients,
+      adminSectionOffers,
+      adminSectionImport,
+      adminSectionPromo,
+      adminSectionPriorityPro,
+      adminSectionAnalytics,
+    ]
       .forEach((sec) => sec && (sec.style.display = "none"));
-    [adminTabClients, adminTabOffers, adminTabImport, adminTabPromo, adminTabAnalytics]
+    [
+      adminTabClients,
+      adminTabOffers,
+      adminTabImport,
+      adminTabPromo,
+      adminTabPriorityPro,
+      adminTabAnalytics,
+    ]
       .forEach((btn) => btn && btn.classList.add("secondary"));
     if (target === "clients") {
       adminSectionClients.style.display = "block";
@@ -3220,6 +3881,11 @@
       adminSectionPromo.style.display = "block";
       adminTabPromo.classList.remove("secondary");
       loadPromoConfig();
+    } else if (target === "prioritypro") {
+      adminSectionPriorityPro.style.display = "block";
+      adminTabPriorityPro.classList.remove("secondary");
+      loadPriorityProConfig();
+      loadPriorityProAudit();
     } else {
       adminSectionImport.style.display = "block";
       adminTabImport.classList.remove("secondary");
@@ -6870,6 +7536,9 @@
   renderPromoActions();
   renderPromoRulesStatic();
   updatePromoTextsFromConfig();
+  setPriorityProConfig(defaultPriorityProConfig);
+  renderPriorityProSummary({});
+  renderPriorityProTable([]);
   bootstrapUniverse();
 
   function nascondiBadge3D() {
