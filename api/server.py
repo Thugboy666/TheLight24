@@ -2173,7 +2173,7 @@ app = create_app()
 
 def main() -> None:
     """Avvia il server API aiohttp."""
-    host = os.environ.get("API_HOST", os.environ.get("APP_HOST", "0.0.0.0"))
+    host = os.environ.get("API_HOST", os.environ.get("APP_HOST", "127.0.0.0"))
     port = int(os.environ.get("API_PORT", os.environ.get("APP_PORT", 8080)))
     logger.info(
         "Avvio TheLight24 API server su %s:%s (LLM_BACKEND_URL=%s)",
