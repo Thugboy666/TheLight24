@@ -60,6 +60,7 @@ from .db import (
     set_meta_value,
     save_daily_offer,
     update_user_password,
+    update_client_password_hash,
     upsert_product,
     delete_daily_offer,
     get_meta_value,
@@ -971,8 +972,12 @@ async def admin_clients_save(request: web.Request) -> web.Response:
         )
 
 
-# curl -X POST http://localhost:8080/admin/clients/123/password -H "Authorization: Bearer <token>" \
-#   -H "Content-Type: application/json" -d '{"password":"NuovaPassword123!"}'
+# Smoke test:
+# TOKEN=<admin_token>
+# curl -i -X POST http://127.0.0.1:8080/admin/clients/15/password \
+#   -H "Authorization: Bearer $TOKEN" \
+#   -H "Content-Type: application/json" \
+#   -d '{"password":"Test12345!"}'
 async def admin_client_set_password(request: web.Request) -> web.Response:
     _, error = require_admin_user(request)
     if error:
@@ -994,10 +999,15 @@ async def admin_client_set_password(request: web.Request) -> web.Response:
             {"status": "error", "message": "invalid_json"}, status=400
         )
 
-    password = (body or {}).get("password")
-    if not password or not str(password).strip():
+    password_value = (body or {}).get("password")
+    if password_value is None:
         return web.json_response(
             {"status": "error", "message": "missing_password"}, status=400
+        )
+    password = str(password_value).strip()
+    if len(password) < 6:
+        return web.json_response(
+            {"status": "error", "message": "invalid_password"}, status=400
         )
 
     client = get_client_by_id(client_id)
@@ -1012,15 +1022,13 @@ async def admin_client_set_password(request: web.Request) -> web.Response:
     if not user and client.get("email"):
         user = get_user_by_email(client["email"])
 
-    if not user:
-        return web.json_response(
-            {"status": "error", "message": "user_not_found"}, status=404
-        )
-
     password_hash = bcrypt.hashpw(
         str(password).encode("utf-8"), bcrypt.gensalt(rounds=12)
     ).decode("utf-8")
-    update_user_password(user_id=user["id"], new_password_hash=password_hash)
+    if user:
+        update_user_password(user_id=user["id"], new_password_hash=password_hash)
+    else:
+        update_client_password_hash(client_id=client_id, new_password_hash=password_hash)
     logger.info("admin_set_password client_id=%s ok=true", client_id)
     return web.json_response({"status": "ok"})
 
@@ -2385,7 +2393,9 @@ def create_app() -> web.Application:
     # ADMIN
     app.router.add_get("/admin/clients/all", admin_clients_all)
     app.router.add_post("/admin/clients/save", admin_clients_save)
-    app.router.add_post("/admin/clients/{client_id}/password", admin_client_set_password)
+    app.router.add_post(
+        "/admin/clients/{client_id:\\d+}/password", admin_client_set_password
+    )
     app.router.add_post("/admin/clients/delete", admin_clients_delete)
     app.router.add_post("/admin/clients/import_promo", admin_clients_import_promo)
     app.router.add_post("/admin/save/clients", admin_save_clients_settings)

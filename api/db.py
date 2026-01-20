@@ -83,6 +83,7 @@ def init_db() -> None:
             ("promo_ticket_code", "ALTER TABLE clients ADD COLUMN promo_ticket_code TEXT"),
             ("promo_last_update", "ALTER TABLE clients ADD COLUMN promo_last_update TEXT"),
             ("user_id", "ALTER TABLE clients ADD COLUMN user_id INTEGER"),
+            ("password_hash", "ALTER TABLE clients ADD COLUMN password_hash TEXT"),
         ]
         for col, stmt in migrations:
             if col not in existing_cols:
@@ -389,6 +390,15 @@ def update_user_password(user_id: int, new_password_hash: str) -> None:
 
 
 # ========== CLIENTS ========== #
+
+def update_client_password_hash(client_id: int, new_password_hash: str) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE clients SET password_hash = ?, updated_at = ? WHERE id = ?",
+            (new_password_hash, now, client_id),
+        )
+        conn.commit()
 
 def list_clients() -> List[Dict[str, Any]]:
     with get_db() as conn:
@@ -1213,6 +1223,7 @@ __all__ = [
     "get_promo_config",
     "get_notification_settings",
     "update_notification_settings",
+    "update_client_password_hash",
     "delete_orders_older_than",
     "bulk_insert_orders",
     "list_orders",
