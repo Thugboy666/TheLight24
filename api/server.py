@@ -44,6 +44,7 @@ from .db import (
     get_user_by_id,
     init_db,
     get_db,
+    DB_PATH,
     list_orders,
     insert_discount_rule,
     link_client_to_user_by_email,
@@ -61,6 +62,8 @@ from .db import (
     save_daily_offer,
     update_user_password,
     update_user_identity,
+    update_client_password_hash,
+    update_client_user_id,
     upsert_product,
     delete_daily_offer,
     get_meta_value,
@@ -153,6 +156,7 @@ DESKTOP_UI_INDEX = BASE_DIR / "gui" / "INDEX_DESKTOP.html"
 
 # Initialize persistence layer
 init_db()
+logger.info("DB path resolved: %s", DB_PATH.resolve())
 db = get_db()
 
 # backend LLM locale (Termux / llama.cpp / phi ecc.)
@@ -223,6 +227,33 @@ def verify_password(plain_password: str, stored_hash: str) -> bool:
     if stored_hash == plain_password:
         return True
     return False
+
+
+def _hash_log_value(value: Optional[str]) -> str:
+    if not value:
+        return "missing"
+    prefix = value[:7]
+    return f"{prefix}...len={len(value)}"
+
+
+def _smoke_test_password_sync(client_id: int) -> Dict[str, Any]:
+    with get_db() as conn:
+        cur = conn.execute(
+            """
+            SELECT u.password_hash AS user_hash, c.password_hash AS client_hash
+            FROM clients c
+            LEFT JOIN users u ON c.user_id = u.id
+            WHERE c.id = ?
+            """,
+            (client_id,),
+        )
+        row = cur.fetchone()
+        if not row:
+            return {"ok": False, "user_hash": None, "client_hash": None}
+        user_hash = row["user_hash"]
+        client_hash = row["client_hash"]
+        ok = bool(user_hash and client_hash and user_hash == client_hash)
+        return {"ok": ok, "user_hash": user_hash, "client_hash": client_hash}
 
 
 def ensure_admin_user() -> dict:
@@ -521,15 +552,10 @@ async def auth_login(request: web.Request) -> web.Response:
     remember = bool(body.get("remember", False))
 
     user = get_user_by_email(email)
-    client_fallback = False
-    if not user:
-        client_fallback = bool(get_client_by_email(email))
-    logger.info(
-        "auth_login attempt email=%s user_found=%s client_fallback=%s",
-        email,
-        bool(user),
-        client_fallback,
-    )
+    user_found = bool(user)
+    client: Optional[Dict[str, Any]] = None
+    client_found = False
+    used_fallback = False
 
     ADMIN_EMAIL = "god@local"
     ADMIN_PASS = "OrmaNet!2025$Light"
@@ -547,6 +573,14 @@ async def auth_login(request: web.Request) -> web.Response:
             tier=admin_user.get("tier", "distributore"),
             token=bool(token),
         )
+        logger.info(
+            "auth_login email=%s user_found=%s client_found=%s used_fallback=%s db_path=%s",
+            email,
+            user_found,
+            client_found,
+            used_fallback,
+            DB_PATH.resolve(),
+        )
         return web.json_response(
             {
                 "status": "ok",
@@ -557,13 +591,56 @@ async def auth_login(request: web.Request) -> web.Response:
             }
         )
 
-    if not user:
-        log_event("user_login_failed", email=email)
-        return web.json_response({"status": "ko"})
+    client = get_client_by_email(email)
+    client_found = bool(client)
 
-    if not verify_password(password, user.get("password_hash")):
-        log_event("user_login_failed", email=email)
-        return web.json_response({"status": "ko"})
+    if not user:
+        if client and client.get("password_hash") and verify_password(
+            password, client.get("password_hash")
+        ):
+            used_fallback = True
+            desired_name = client.get("ragione_sociale") or client.get("name") or email
+            desired_tier = client.get("listino") or "rivenditore10"
+            user = create_user(
+                email=email,
+                password_hash=client.get("password_hash"),
+                name=desired_name,
+                tier=desired_tier,
+                piva=client.get("piva") or "",
+                phone=client.get("telefono") or "",
+            )
+            update_client_user_id(client.get("id"), user.get("id"))
+            link_client_to_user_by_email(email)
+        else:
+            log_event("user_login_failed", email=email)
+            logger.info(
+                "auth_login email=%s user_found=%s client_found=%s used_fallback=%s db_path=%s",
+                email,
+                user_found,
+                client_found,
+                used_fallback,
+                DB_PATH.resolve(),
+            )
+            return web.json_response({"status": "ko"})
+
+    if user and not verify_password(password, user.get("password_hash")):
+        if client and client.get("password_hash") and verify_password(
+            password, client.get("password_hash")
+        ):
+            used_fallback = True
+            update_user_password(user_id=user["id"], new_password_hash=client.get("password_hash"))
+            update_client_user_id(client.get("id"), user.get("id"))
+        else:
+            log_event("user_login_failed", email=email)
+            logger.info(
+                "auth_login email=%s user_found=%s client_found=%s used_fallback=%s db_path=%s",
+                email,
+                user_found,
+                client_found,
+                used_fallback,
+                DB_PATH.resolve(),
+            )
+            return web.json_response({"status": "ko"})
 
     expires_delta = timedelta(days=30) if remember else timedelta(hours=24)
     token = create_session_with_expiry(user_id=user["id"], expires_delta=expires_delta)
@@ -573,6 +650,14 @@ async def auth_login(request: web.Request) -> web.Response:
         email=email,
         tier=user.get("tier", "rivenditore10"),
         token=token,
+    )
+    logger.info(
+        "auth_login email=%s user_found=%s client_found=%s used_fallback=%s db_path=%s",
+        email,
+        user_found,
+        client_found,
+        used_fallback,
+        DB_PATH.resolve(),
     )
     return web.json_response(
         {
@@ -996,6 +1081,21 @@ async def admin_clients_save(request: web.Request) -> web.Response:
 # curl -i -X POST http://127.0.0.1:8080/auth/login \
 #   -H "Content-Type: application/json" \
 #   -d '{"email":"info@arcopia.it","password":"Test12345!"}'
+# python - <<'PY'
+# import sqlite3
+# from api.db import DB_PATH
+# conn = sqlite3.connect(DB_PATH)
+# row = conn.execute(
+#     """
+#     SELECT u.password_hash, c.password_hash
+#     FROM clients c
+#     LEFT JOIN users u ON c.user_id = u.id
+#     WHERE c.id = 15
+#     """
+# ).fetchone()
+# assert row and row[0] and row[1] and row[0] == row[1]
+# print("password_hash synced", bool(row))
+# PY
 async def admin_client_set_password(request: web.Request) -> web.Response:
     _, error = require_admin_user(request)
     if error:
@@ -1034,6 +1134,7 @@ async def admin_client_set_password(request: web.Request) -> web.Response:
             {"status": "error", "message": "client_not_found"}, status=404
         )
 
+    client_user_id_before = client.get("user_id")
     email = normalize_email(client.get("email") or "")
     if not email:
         return web.json_response(
@@ -1071,11 +1172,21 @@ async def admin_client_set_password(request: web.Request) -> web.Response:
             update_user_identity(user_id=user["id"], **updates)
         update_user_password(user_id=user["id"], new_password_hash=password_hash)
 
+    update_client_password_hash(client_id=client_id, new_password_hash=password_hash)
+    update_client_user_id(client_id=client_id, user_id=user.get("id"))
     link_client_to_user_by_email(email)
+    client_after = get_client_by_id(client_id) or {}
+    smoke_result = _smoke_test_password_sync(client_id)
     logger.info(
-        "admin_set_password client_id=%s email=%s target_table=users ok=true",
+        "admin_set_password client_id=%s email=%s user_id=%s client_user_id_before=%s client_user_id_after=%s hash_sync_ok=%s user_hash=%s client_hash=%s",
         client_id,
         email,
+        user.get("id"),
+        client_user_id_before,
+        client_after.get("user_id"),
+        smoke_result.get("ok"),
+        _hash_log_value(smoke_result.get("user_hash")),
+        _hash_log_value(smoke_result.get("client_hash")),
     )
     return web.json_response({"status": "ok"})
 
