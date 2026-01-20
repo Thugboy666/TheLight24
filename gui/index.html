@@ -271,10 +271,14 @@
       border-radius: 999px;
       background: #9ca3af;
     }
-    .admin-llm-indicator[data-status="ok"] .dot {
+    .admin-llm-indicator[data-status="ok"] .dot,
+    .admin-llm-indicator[data-status="up"] .dot {
       background: #16a34a;
     }
     .admin-llm-indicator[data-status="warming_up"] .dot {
+      background: #f59e0b;
+    }
+    .admin-llm-indicator[data-status="stale"] .dot {
       background: #f59e0b;
     }
     .admin-llm-indicator[data-status="down"] .dot {
@@ -2810,33 +2814,56 @@
   };
 
   let adminLlmHealthInterval = null;
+  let adminLlmFailureCount = 0;
+  const ADMIN_LLM_FAILURE_THRESHOLD = 3;
+  const ADMIN_LLM_POLL_INTERVAL = 7000;
+  const ADMIN_LLM_FETCH_TIMEOUT = 6000;
 
-  function updateAdminLlmIndicator(status) {
+  function updateAdminLlmIndicator(status, label) {
     if (!adminLlmIndicator || !adminLlmStatusText) return;
     adminLlmIndicator.dataset.status = status || "unknown";
-    let label = "-";
-    if (status === "ok") label = "OK";
-    if (status === "warming_up") label = "Warming up";
-    if (status === "down") label = "Down";
-    adminLlmStatusText.textContent = label;
+    adminLlmStatusText.textContent = label || "-";
   }
 
   async function fetchAdminLlmHealth() {
     if (!adminLlmIndicator || !adminLlmStatusText) return;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), ADMIN_LLM_FETCH_TIMEOUT);
     try {
-      const res = await fetch(`${BASE_URL}/api/llm/health`);
+      const res = await fetch(`${BASE_URL}/api/llm/health`, { signal: controller.signal });
       const data = await res.json();
-      updateAdminLlmIndicator(data.status || "down");
+      const status = data && data.status ? data.status : "down";
+      const isStale = Boolean(data && data.stale);
+      if (status === "up") {
+        adminLlmFailureCount = 0;
+        updateAdminLlmIndicator(isStale ? "stale" : "up", isStale ? "Up (stale)" : "Up");
+        return;
+      }
+      adminLlmFailureCount += 1;
+      if (adminLlmFailureCount >= ADMIN_LLM_FAILURE_THRESHOLD) {
+        updateAdminLlmIndicator("down", "Down");
+      } else {
+        updateAdminLlmIndicator("checking", "Checking...");
+      }
     } catch (err) {
       console.warn("Errore fetch /api/llm/health", err);
-      updateAdminLlmIndicator("down");
+      adminLlmFailureCount += 1;
+      if (adminLlmFailureCount >= ADMIN_LLM_FAILURE_THRESHOLD) {
+        updateAdminLlmIndicator("down", "Down");
+      } else {
+        updateAdminLlmIndicator("checking", "Checking...");
+      }
+    } finally {
+      clearTimeout(timeoutId);
     }
   }
 
   function startAdminLlmHealthPolling() {
     if (adminLlmHealthInterval || !adminLlmIndicator) return;
+    adminLlmFailureCount = 0;
+    updateAdminLlmIndicator("checking", "Checking...");
     fetchAdminLlmHealth();
-    adminLlmHealthInterval = setInterval(fetchAdminLlmHealth, 5000);
+    adminLlmHealthInterval = setInterval(fetchAdminLlmHealth, ADMIN_LLM_POLL_INTERVAL);
   }
 
   function stopAdminLlmHealthPolling() {

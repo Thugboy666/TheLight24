@@ -188,6 +188,7 @@ def _get_env_int(name: str, default: int) -> int:
 LLM_CONNECT_TIMEOUT = _get_env_float("LLM_CONNECT_TIMEOUT", 5.0)
 LLM_TOTAL_TIMEOUT = _get_env_float("LLM_TOTAL_TIMEOUT", 180.0)
 LLM_DEFAULT_N_PREDICT = _get_env_int("LLM_DEFAULT_N_PREDICT", 96)
+LLM_HEALTH_TTL_SECONDS = _get_env_int("LLM_HEALTH_TTL_SECONDS", 10)
 
 
 # ================== FALLBACK UTILS ==================
@@ -498,13 +499,32 @@ async def health(request: web.Request) -> web.Response:
 
 
 async def llm_health(request: web.Request) -> web.Response:
-    status = await ping_llm(LLM_BACKEND_URL)
-    if status == "reachable":
-        payload = {"status": "ok"}
-    elif status == "warming_up":
-        payload = {"status": "warming_up"}
-    else:
-        payload = {"status": "down"}
+    now = time.monotonic()
+    cache_ts = llm_health_cache.get("ts", 0.0) or 0.0
+    cache_age = now - cache_ts if cache_ts else None
+    cache_valid = cache_ts and cache_age is not None and cache_age <= LLM_HEALTH_TTL_SECONDS
+    if cache_valid:
+        payload = _llm_health_payload_from_cache(cached=True, stale=False)
+        return web.json_response(payload)
+
+    task = _ensure_llm_health_task()
+    if task:
+        try:
+            result = await asyncio.wait_for(asyncio.shield(task), timeout=0.2)
+            payload = {
+                "status": result["status"],
+                "cached": False,
+                "stale": False,
+                "checked_at": result["checked_at"],
+                "latency_ms": result["latency_ms"],
+                "error_kind": result["error_kind"],
+            }
+            return web.json_response(payload)
+        except asyncio.TimeoutError:
+            payload = _llm_health_payload_from_cache(cached=True, stale=True)
+            return web.json_response(payload)
+
+    payload = _llm_health_payload_from_cache(cached=True, stale=True)
     return web.json_response(payload)
 
 
@@ -2174,6 +2194,16 @@ async def public_daily_offer(request: web.Request) -> web.Response:
 
 # ================== LLM LOCALE ==================
 
+llm_health_cache: Dict[str, Any] = {
+    "status": "down",
+    "ts": 0.0,
+    "latency_ms": None,
+    "error_kind": None,
+    "checked_at": None,
+}
+llm_health_task: Optional[asyncio.Task] = None
+llm_health_lock = asyncio.Lock()
+
 def _build_llm_ping_url(url: str) -> str:
     parts = urlsplit(url)
     path = parts.path or ""
@@ -2214,6 +2244,81 @@ async def ping_llm_with_backoff(url: str, retries: int = 3) -> str:
         if status != "warming_up":
             break
     return status
+
+
+def _llm_health_payload_from_cache(*, cached: bool, stale: bool) -> dict:
+    checked_at = llm_health_cache.get("checked_at") or now_iso()
+    return {
+        "status": llm_health_cache.get("status", "down"),
+        "cached": cached,
+        "stale": stale,
+        "checked_at": checked_at,
+        "latency_ms": llm_health_cache.get("latency_ms"),
+        "error_kind": llm_health_cache.get("error_kind"),
+    }
+
+
+async def _probe_llm_health(url: str) -> dict:
+    payload = {"prompt": "ping", "n_predict": 1}
+    ping_url = _build_llm_ping_url(url)
+    start = time.monotonic()
+    status = "down"
+    error_kind = None
+    try:
+        timeout = httpx.Timeout(LLM_CONNECT_TIMEOUT, connect=LLM_CONNECT_TIMEOUT)
+        async with httpx.AsyncClient(timeout=timeout) as client:
+            response = await client.post(ping_url, json=payload)
+        status_code = response.status_code
+        if status_code in (200, 400, 404):
+            status = "up"
+        else:
+            status = "down"
+    except httpx.TimeoutException:
+        status = "down"
+        error_kind = "timeout"
+    except httpx.ConnectError:
+        status = "down"
+        error_kind = "conn"
+    except httpx.HTTPError:
+        status = "down"
+        error_kind = "conn"
+    latency_ms = int((time.monotonic() - start) * 1000)
+    checked_at = now_iso()
+    if status == "up":
+        error_kind = None
+    return {
+        "status": status,
+        "latency_ms": latency_ms,
+        "error_kind": error_kind,
+        "checked_at": checked_at,
+    }
+
+
+async def _refresh_llm_health_cache() -> dict:
+    async with llm_health_lock:
+        result = await _probe_llm_health(LLM_BACKEND_URL)
+        previous_status = llm_health_cache.get("status")
+        llm_health_cache.update(
+            {
+                "status": result["status"],
+                "ts": time.monotonic(),
+                "latency_ms": result["latency_ms"],
+                "error_kind": result["error_kind"],
+                "checked_at": result["checked_at"],
+            }
+        )
+        if previous_status and previous_status != result["status"]:
+            logger.info("LLM health status changed %s -> %s", previous_status, result["status"])
+        return dict(llm_health_cache)
+
+
+def _ensure_llm_health_task() -> Optional[asyncio.Task]:
+    global llm_health_task
+    if llm_health_task and not llm_health_task.done():
+        return llm_health_task
+    llm_health_task = asyncio.create_task(_refresh_llm_health_cache())
+    return llm_health_task
+
 
 async def llm_complete(request: web.Request) -> web.Response:
     """
