@@ -389,6 +389,45 @@ def update_user_password(user_id: int, new_password_hash: str) -> None:
         conn.commit()
 
 
+def update_user_identity(
+    user_id: int,
+    email: Optional[str] = None,
+    name: Optional[str] = None,
+    tier: Optional[str] = None,
+    piva: Optional[str] = None,
+    phone: Optional[str] = None,
+) -> None:
+    updates: list[str] = []
+    params: list[Any] = []
+    if email is not None:
+        updates.append("email = ?")
+        params.append(email)
+    if name is not None:
+        updates.append("name = ?")
+        params.append(name)
+    if tier is not None:
+        updates.append("tier = ?")
+        params.append(tier)
+    if piva is not None:
+        updates.append("piva = ?")
+        params.append(piva)
+    if phone is not None:
+        updates.append("phone = ?")
+        params.append(phone)
+    if not updates:
+        return
+    now = datetime.now(timezone.utc).isoformat()
+    updates.append("updated_at = ?")
+    params.append(now)
+    params.append(user_id)
+    with get_db() as conn:
+        conn.execute(
+            f"UPDATE users SET {', '.join(updates)} WHERE id = ?",
+            params,
+        )
+        conn.commit()
+
+
 # ========== CLIENTS ========== #
 
 def update_client_password_hash(client_id: int, new_password_hash: str) -> None:
