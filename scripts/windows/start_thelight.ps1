@@ -135,6 +135,20 @@ $LlmPidFile = Join-Path $PidDir "llm.pid"
 New-Item -ItemType File -Force -Path $LlmOut, $LlmErr | Out-Null
 
 $LlmExe = Join-Path $RuntimeDir "bin\llama-server.exe"
+$LlmBinDir = Join-Path $RuntimeDir "bin"
+$SafeModeApplied = $false
+if ($env:LLM_SAFE_MODE -and $env:LLM_SAFE_MODE -eq "1") {
+    $RpcDll = Join-Path $LlmBinDir "ggml-rpc.dll"
+    $RpcDllDisabled = Join-Path $LlmBinDir "ggml-rpc.dll.disabled"
+    if (Test-Path $RpcDll) {
+        Move-Item -Path $RpcDll -Destination $RpcDllDisabled -Force
+        $SafeModeApplied = $true
+        Write-Report "LLM_SAFE_MODE=1: ggml-rpc.dll disabilitata (rinominata in ggml-rpc.dll.disabled)."
+    } else {
+        Write-Report "LLM_SAFE_MODE=1: ggml-rpc.dll non trovata; nessuna rinomina effettuata."
+    }
+}
+$env:PATH = "$LlmBinDir;$env:PATH"
 $Args = @(
     "--host", "127.0.0.1",
     "--port", "8081",
@@ -143,7 +157,7 @@ $Args = @(
     "--n-parallel", "2"
 )
 
-$llmProc = Start-Process -FilePath $LlmExe -ArgumentList $Args -WorkingDirectory (Join-Path $RuntimeDir "bin") -RedirectStandardOutput $LlmOut -RedirectStandardError $LlmErr -WindowStyle Hidden -PassThru
+$llmProc = Start-Process -FilePath $LlmExe -ArgumentList $Args -WorkingDirectory $LlmBinDir -RedirectStandardOutput $LlmOut -RedirectStandardError $LlmErr -WindowStyle Hidden -PassThru
 $llmProc.Id | Out-File -FilePath $LlmPidFile -Encoding ascii
 
 $LlmRequired = $true
@@ -151,60 +165,46 @@ if ($env:LLM_REQUIRED -and $env:LLM_REQUIRED -eq "0") {
     $LlmRequired = $false
 }
 
-Start-Sleep -Milliseconds 500
-$llmProc.Refresh()
 $llmReady = $false
-if ($llmProc.HasExited) {
-    $exitCode = $llmProc.ExitCode
-    Write-Report ("LLM exited immediately. ExitCode={0}" -f $exitCode)
-    Write-Host ("LLM exit code: {0}" -f $exitCode)
-    if (Test-Path $LlmErr) {
-        Write-Host "---- llm_err.log (last 80 lines) ----"
-        Get-Content -Path $LlmErr -Tail 80 | ForEach-Object { Write-Host $_ }
-    }
-    if (Test-Path $LlmOut) {
-        Write-Host "---- llm_out.log (last 80 lines) ----"
-        Get-Content -Path $LlmOut -Tail 80 | ForEach-Object { Write-Host $_ }
-    }
-    if (Test-Path $LlmExe) {
-        $llmItem = Get-Item $LlmExe
-        Write-Report ("llama-server.exe size={0} lastwrite={1}" -f $llmItem.Length, $llmItem.LastWriteTime)
-    }
-    if (Test-Path $ModelPath) {
-        $modelItem = Get-Item $ModelPath
-        Write-Report ("Model size={0} lastwrite={1}" -f $modelItem.Length, $modelItem.LastWriteTime)
-    } else {
-        Write-Report ("Model missing: {0}" -f $ModelPath)
-    }
-
-    if ($LlmRequired) {
-        exit 1
-    }
+Write-Report "Diagnostica LLM dopo avvio:"
+Write-Report "netstat :8081:"
+$netstatAfterStart = cmd /c "netstat -ano | findstr :8081"
+if ($netstatAfterStart) {
+    $netstatAfterStart | ForEach-Object { Write-Report ("  {0}" -f $_) }
 } else {
-    $deadline = (Get-Date).AddSeconds(30)
-    while ((Get-Date) -lt $deadline) {
-        $listening = Get-NetTCPConnection -LocalPort 8081 -State Listen -ErrorAction SilentlyContinue
-        $pingOk = $false
-        try {
-            $pingResponse = & curl.exe -s -X POST -H "Content-Type: application/json" -d "{\"prompt\":\"ping\",\"n_predict\":1}" "http://127.0.0.1:8081/completion"
-            if ($LASTEXITCODE -eq 0 -and $pingResponse) {
-                $pingOk = $true
-            }
-        } catch {
-            $pingOk = $false
-        }
+    Write-Report "  (none)"
+}
+Write-Report "Get-Process llama-server:"
+Get-Process llama-server -ErrorAction SilentlyContinue | ForEach-Object {
+    Write-Report ("  Id={0} CPU={1} WS={2}" -f $_.Id, $_.CPU, $_.WorkingSet64)
+}
 
-        if ($listening -and $pingOk) {
-            $llmReady = $true
-            break
-        }
-        Start-Sleep -Milliseconds 500
+$deadline = (Get-Date).AddSeconds(20)
+while ((Get-Date) -lt $deadline) {
+    $llmProc.Refresh()
+    if ($llmProc.HasExited) {
+        break
     }
+    $listening = Get-NetTCPConnection -LocalPort 8081 -State Listen -ErrorAction SilentlyContinue
+    if ($listening) {
+        $llmReady = $true
+        break
+    }
+    Start-Sleep -Milliseconds 250
 }
 
 if (-not $llmReady) {
-    Write-Report "LLM not ready after wait window."
-    Write-Host "LLM not ready after wait window."
+    $llmProc.Refresh()
+    $exitCode = $null
+    if ($llmProc.HasExited) {
+        $exitCode = $llmProc.ExitCode
+        Write-Report ("LLM process died before opening port 8081. ExitCode={0}" -f $exitCode)
+        Write-Host ("LLM process died before opening port 8081. ExitCode={0}" -f $exitCode)
+    } else {
+        Write-Report "LLM not listening on port 8081 after 20s (process may be dead or stuck)."
+        Write-Host "LLM not listening on port 8081 after 20s (process may be dead or stuck)."
+    }
+    Write-Host "Suggerimento: installa Microsoft Visual C++ Redistributable 2015-2022 (x64) se non presente."
     Write-Report "netstat :8081 (post-wait):"
     $netstatAfter = cmd /c "netstat -ano | findstr :8081"
     if ($netstatAfter) {
@@ -212,23 +212,32 @@ if (-not $llmReady) {
     } else {
         Write-Report "  (none)"
     }
+    Write-Report "Get-Process llama-server (post-wait):"
+    Get-Process llama-server -ErrorAction SilentlyContinue | ForEach-Object {
+        Write-Report ("  Id={0} CPU={1} WS={2}" -f $_.Id, $_.CPU, $_.WorkingSet64)
+    }
     if ($llmProc -and -not $llmProc.HasExited) {
         Write-Report ("LLM process running: {0}" -f $llmProc.Id)
     } elseif ($llmProc -and $llmProc.HasExited) {
         Write-Report ("LLM process exited with code {0}" -f $llmProc.ExitCode)
     }
     if (Test-Path $LlmErr) {
-        Write-Host "---- llm_err.log (last 80 lines) ----"
-        Get-Content -Path $LlmErr -Tail 80 | ForEach-Object { Write-Host $_ }
+        Write-Host "---- llm_err.log (last 120 lines) ----"
+        Get-Content -Path $LlmErr -Tail 120 | ForEach-Object { Write-Host $_ }
     }
     if (Test-Path $LlmOut) {
-        Write-Host "---- llm_out.log (last 80 lines) ----"
-        Get-Content -Path $LlmOut -Tail 80 | ForEach-Object { Write-Host $_ }
+        Write-Host "---- llm_out.log (last 120 lines) ----"
+        Get-Content -Path $LlmOut -Tail 120 | ForEach-Object { Write-Host $_ }
     }
 
     if ($LlmRequired) {
         exit 1
     }
+}
+
+$llmProc.Refresh()
+if ($llmReady -and $SafeModeApplied) {
+    Write-Report "WARNING: LLM avviato con LLM_SAFE_MODE=1; ggml-rpc.dll disabilitata."
 }
 
 $env:API_HOST = $env:APP_HOST
