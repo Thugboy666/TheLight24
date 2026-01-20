@@ -60,7 +60,7 @@ from .db import (
     set_meta_value,
     save_daily_offer,
     update_user_password,
-    update_client_password_hash,
+    update_user_identity,
     upsert_product,
     delete_daily_offer,
     get_meta_value,
@@ -198,6 +198,10 @@ def hash_password(password: str) -> str:
 
 def hash_password_legacy(password: str) -> str:
     return hashlib.sha256(password.encode()).hexdigest()
+
+
+def normalize_email(email: str) -> str:
+    return email.strip().lower()
 
 
 def verify_password(plain_password: str, stored_hash: str) -> bool:
@@ -480,7 +484,8 @@ async def auth_register(request: web.Request) -> web.Response:
     if not body.get("accept_terms"):
         return web.json_response({"status": "ko", "error": "terms"})
 
-    email = body.get("email")
+    email_raw = body.get("email")
+    email = normalize_email(email_raw or "")
     if not email:
         return web.json_response({"status": "ko", "error": "missing_email"})
 
@@ -511,14 +516,25 @@ async def auth_register(request: web.Request) -> web.Response:
 
 async def auth_login(request: web.Request) -> web.Response:
     body = await request.json()
-    email = body.get("email", "").strip()
+    email = normalize_email(body.get("email", ""))
     password = body.get("password", "")
     remember = bool(body.get("remember", False))
+
+    user = get_user_by_email(email)
+    client_fallback = False
+    if not user:
+        client_fallback = bool(get_client_by_email(email))
+    logger.info(
+        "auth_login attempt email=%s user_found=%s client_fallback=%s",
+        email,
+        bool(user),
+        client_fallback,
+    )
 
     ADMIN_EMAIL = "god@local"
     ADMIN_PASS = "OrmaNet!2025$Light"
     if email == ADMIN_EMAIL and password == ADMIN_PASS:
-        admin_user = get_user_by_email(ADMIN_EMAIL)
+        admin_user = user or get_user_by_email(ADMIN_EMAIL)
         if not admin_user:
             admin_user = ensure_admin_user()
 
@@ -541,7 +557,6 @@ async def auth_login(request: web.Request) -> web.Response:
             }
         )
 
-    user = get_user_by_email(email)
     if not user:
         log_event("user_login_failed", email=email)
         return web.json_response({"status": "ko"})
@@ -978,6 +993,9 @@ async def admin_clients_save(request: web.Request) -> web.Response:
 #   -H "Authorization: Bearer $TOKEN" \
 #   -H "Content-Type: application/json" \
 #   -d '{"password":"Test12345!"}'
+# curl -i -X POST http://127.0.0.1:8080/auth/login \
+#   -H "Content-Type: application/json" \
+#   -d '{"email":"info@arcopia.it","password":"Test12345!"}'
 async def admin_client_set_password(request: web.Request) -> web.Response:
     _, error = require_admin_user(request)
     if error:
@@ -1016,20 +1034,49 @@ async def admin_client_set_password(request: web.Request) -> web.Response:
             {"status": "error", "message": "client_not_found"}, status=404
         )
 
+    email = normalize_email(client.get("email") or "")
+    if not email:
+        return web.json_response(
+            {"status": "error", "message": "missing_email"}, status=400
+        )
+
     user = None
     if client.get("user_id"):
         user = get_user_by_id(int(client["user_id"]))
-    if not user and client.get("email"):
-        user = get_user_by_email(client["email"])
+    if not user:
+        user = get_user_by_email(email)
+
+    desired_name = client.get("ragione_sociale") or client.get("name") or email
+    desired_tier = client.get("listino") or "rivenditore10"
 
     password_hash = bcrypt.hashpw(
         str(password).encode("utf-8"), bcrypt.gensalt(rounds=12)
     ).decode("utf-8")
-    if user:
-        update_user_password(user_id=user["id"], new_password_hash=password_hash)
+    if not user:
+        user = create_user(
+            email=email,
+            password_hash=password_hash,
+            name=desired_name,
+            tier=desired_tier,
+        )
     else:
-        update_client_password_hash(client_id=client_id, new_password_hash=password_hash)
-    logger.info("admin_set_password client_id=%s ok=true", client_id)
+        updates: dict[str, str] = {}
+        if user.get("email") != email:
+            updates["email"] = email
+        if not user.get("name") and desired_name:
+            updates["name"] = desired_name
+        if desired_tier and user.get("tier") != desired_tier:
+            updates["tier"] = desired_tier
+        if updates:
+            update_user_identity(user_id=user["id"], **updates)
+        update_user_password(user_id=user["id"], new_password_hash=password_hash)
+
+    link_client_to_user_by_email(email)
+    logger.info(
+        "admin_set_password client_id=%s email=%s target_table=users ok=true",
+        client_id,
+        email,
+    )
     return web.json_response({"status": "ok"})
 
 
