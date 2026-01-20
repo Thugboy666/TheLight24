@@ -1,4 +1,5 @@
 import json
+import logging
 import os
 import sqlite3
 import uuid
@@ -45,6 +46,12 @@ def init_db() -> None:
             )
             """
         )
+        user_cols = {
+            row["name"] for row in cur.execute("PRAGMA table_info(users)").fetchall()
+        }
+        if "password_hash" not in user_cols:
+            cur.execute("ALTER TABLE users ADD COLUMN password_hash TEXT")
+            logging.getLogger("thelight24.db").info("password_hash column ensured")
         cur.execute(
             """
             CREATE TABLE IF NOT EXISTS clients (

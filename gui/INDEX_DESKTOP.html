@@ -1799,6 +1799,10 @@
             <input id="client-phone" />
           </div>
         </div>
+        <div class="field">
+          <label>Password</label>
+          <input id="client-password" type="password" placeholder="Imposta nuova password" />
+        </div>
         <div class="two-cols">
           <div class="field">
             <label>Listino</label>
@@ -2707,6 +2711,7 @@
   const clientPivaInput = document.getElementById("client-piva");
   const clientEmailInput = document.getElementById("client-email");
   const clientPhoneInput = document.getElementById("client-phone");
+  const clientPasswordInput = document.getElementById("client-password");
   const clientListinoInput = document.getElementById("client-listino");
   const clientStatoInput = document.getElementById("client-stato");
   const clientNoteInput = document.getElementById("client-note");
@@ -4586,6 +4591,9 @@
     clientPivaInput.value = client?.piva || "";
     clientEmailInput.value = client?.email || "";
     clientPhoneInput.value = client?.telefono || client?.phone || "";
+    if (clientPasswordInput) {
+      clientPasswordInput.value = "";
+    }
     clientListinoInput.value = client?.listino || "distributore";
     clientStatoInput.value = client?.stato || "attivo";
     clientNoteInput.value = client?.note || "";
@@ -4597,6 +4605,28 @@
     }
     if (clientPromoTicketInput) {
       clientPromoTicketInput.value = client?.promo_ticket_code || "";
+    }
+  }
+
+  async function setClientPassword(clientId) {
+    if (!clientId || !clientPasswordInput) return;
+    const passwordValue = clientPasswordInput.value.trim();
+    if (!passwordValue) return;
+    try {
+      const res = await fetch(`${BASE_URL}/admin/clients/${clientId}/password`, {
+        method: "POST",
+        headers: buildAuthHeaders(),
+        body: JSON.stringify({ password: passwordValue }),
+      });
+      if (res.ok) {
+        showToast("Password aggiornata");
+      } else {
+        showToast("Impossibile salvare password", false);
+      }
+    } catch (e) {
+      showToast("Impossibile salvare password", false);
+    } finally {
+      clientPasswordInput.value = "";
     }
   }
 
@@ -4616,17 +4646,27 @@
     };
     const existingIdx = client.id ? clients.findIndex((c) => c.id === client.id) : -1;
     try {
-      await fetch(BASE_URL + "/admin/clients/save", {
+      const res = await fetch(BASE_URL + "/admin/clients/save", {
         method: "POST",
         headers: buildAuthHeaders(),
         body: JSON.stringify(client),
       });
+      let savedClient = null;
+      if (res.ok) {
+        try {
+          savedClient = await res.json();
+        } catch (e) {
+          savedClient = null;
+        }
+      }
       const refreshed = await fetch(BASE_URL + "/admin/clients/all", { headers: buildAuthHeaders() });
       const data = await refreshed.json();
       clients = data.clients || [];
       renderClientsTable();
       refreshPromoClientsSelect();
       showToast("Cliente salvato");
+      const savedId = savedClient?.id || client.id;
+      await setClientPassword(savedId);
     } catch (e) {
       if (existingIdx >= 0) clients[existingIdx] = client; else clients.push(client);
       renderClientsTable();
