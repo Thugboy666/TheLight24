@@ -29,22 +29,26 @@ function Stop-FromPid($PidFile, $Label) {
         return
     }
 
-    $ProcId = 0
-    if (-not [int]::TryParse($ProcIdRaw, [ref]$ProcId)) {
+    $procId = 0
+    if (-not [int]::TryParse($ProcIdRaw, [ref]$procId)) {
         Write-Host "PID non numerico per $Label: $ProcIdRaw"
         Remove-Item $PidFile -ErrorAction SilentlyContinue
         return
     }
 
-    $Process = Get-Process -Id $ProcId -ErrorAction SilentlyContinue
+    $Process = Get-Process -Id $procId -ErrorAction SilentlyContinue
     if (-not $Process) {
-        Write-Host "Processo non trovato per $Label (PID $ProcId)"
+        Write-Host "Processo non trovato per $Label (PID $procId)"
         Remove-Item $PidFile -ErrorAction SilentlyContinue
         return
     }
 
-    Stop-Process -Id [int]$ProcId -Force -ErrorAction SilentlyContinue
-    Write-Host "Arrestato $Label (PID $ProcId)"
+    try {
+        Stop-Process -Id [int]$procId -Force -ErrorAction Stop
+        Write-Host "Arrestato $Label (PID $procId)"
+    } catch {
+        Write-Host "Errore arresto $Label (PID $procId): $($_.Exception.Message)"
+    }
     Remove-Item $PidFile -ErrorAction SilentlyContinue
 }
 

@@ -4,6 +4,7 @@ import os
 import uuid
 import asyncio
 import time
+import socket
 from datetime import datetime, timedelta, timezone
 from logging.handlers import RotatingFileHandler
 from pathlib import Path
@@ -499,6 +500,17 @@ async def health(request: web.Request) -> web.Response:
 
 
 async def llm_health(request: web.Request) -> web.Response:
+    host, port = _get_llm_backend_host_port(LLM_BACKEND_URL)
+    socket_ok = await _check_llm_socket(host, port, timeout=0.15)
+    if not socket_ok:
+        payload = {
+            "status": "down",
+            "llm_backend_url": LLM_BACKEND_URL,
+            "checked_at": now_iso(),
+            "cached": False,
+        }
+        return web.json_response(payload)
+
     now = time.monotonic()
     cache_ts = llm_health_cache.get("ts", 0.0) or 0.0
     cache_age = now - cache_ts if cache_ts else None
@@ -513,6 +525,7 @@ async def llm_health(request: web.Request) -> web.Response:
             result = await asyncio.wait_for(asyncio.shield(task), timeout=0.2)
             payload = {
                 "status": result["status"],
+                "llm_backend_url": LLM_BACKEND_URL,
                 "cached": False,
                 "stale": False,
                 "checked_at": result["checked_at"],
@@ -2212,6 +2225,26 @@ def _build_llm_ping_url(url: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc, path, parts.query, parts.fragment))
 
 
+def _get_llm_backend_host_port(url: str) -> tuple[str, int]:
+    parts = urlsplit(url)
+    host = parts.hostname or "127.0.0.1"
+    port = parts.port
+    if port is None:
+        port = 443 if parts.scheme == "https" else 80
+    return host, port
+
+
+async def _check_llm_socket(host: str, port: int, timeout: float = 0.15) -> bool:
+    def _try_connect() -> bool:
+        try:
+            with socket.create_connection((host, port), timeout=timeout):
+                return True
+        except OSError:
+            return False
+
+    return await asyncio.to_thread(_try_connect)
+
+
 async def ping_llm(url: str) -> str:
     payload = {"prompt": "ping", "n_predict": 1}
     ping_url = _build_llm_ping_url(url)
@@ -2250,6 +2283,7 @@ def _llm_health_payload_from_cache(*, cached: bool, stale: bool) -> dict:
     checked_at = llm_health_cache.get("checked_at") or now_iso()
     return {
         "status": llm_health_cache.get("status", "down"),
+        "llm_backend_url": LLM_BACKEND_URL,
         "cached": cached,
         "stale": stale,
         "checked_at": checked_at,
@@ -2491,19 +2525,22 @@ async def call_llm_with_retry(payload: dict) -> tuple[Optional[httpx.Response], 
             except httpx.ConnectError as exc:
                 elapsed = time.monotonic() - attempt_start
                 logger.warning(
-                    "LLM request attempt %s/%s failed (connection) elapsed=%.3fs error=%s",
+                    "LLM request attempt %s/%s failed (connection) elapsed=%.3fs error_type=%s error=%s backend_url=%s",
                     attempt,
                     max_attempts,
                     elapsed,
+                    exc.__class__.__name__,
                     exc,
+                    LLM_BACKEND_URL,
                 )
                 last_error = {
                     "status": 503,
-                    "payload": _build_llm_error_payload(
-                        "LLM_UNREACHABLE",
-                        "LLM non raggiungibile",
-                        "connection",
-                    ),
+                    "payload": {
+                        "status": "error",
+                        "message": "LLM unreachable",
+                        "llm_backend_url": LLM_BACKEND_URL,
+                        "error_type": "connection",
+                    },
                 }
                 should_retry = True
             except httpx.TimeoutException as exc:
