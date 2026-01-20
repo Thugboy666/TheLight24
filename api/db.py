@@ -439,6 +439,17 @@ def update_client_password_hash(client_id: int, new_password_hash: str) -> None:
         )
         conn.commit()
 
+
+def update_client_user_id(client_id: int, user_id: Optional[int]) -> None:
+    now = datetime.now(timezone.utc).isoformat()
+    with get_db() as conn:
+        conn.execute(
+            "UPDATE clients SET user_id = ?, updated_at = ? WHERE id = ?",
+            (user_id, now, client_id),
+        )
+        conn.commit()
+
+
 def list_clients() -> List[Dict[str, Any]]:
     with get_db() as conn:
         cur = conn.execute(
@@ -1263,6 +1274,7 @@ __all__ = [
     "get_notification_settings",
     "update_notification_settings",
     "update_client_password_hash",
+    "update_client_user_id",
     "delete_orders_older_than",
     "bulk_insert_orders",
     "list_orders",
