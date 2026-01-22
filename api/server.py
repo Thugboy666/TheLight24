@@ -160,10 +160,17 @@ init_db()
 logger.info("DB path resolved: %s", DB_PATH.resolve())
 db = get_db()
 
-# backend LLM locale (Termux / llama.cpp / phi ecc.)
-#   - LLM_BACKEND_URL ha priorità e può puntare già all'endpoint completo
-#   - altrimenti usiamo THELIGHT_LLM_BASE_URL / completions di default
+# backend LLM locale (llama.cpp / KoboldCpp)
+LLM_MODE = os.environ.get("LLM_MODE", "llamacpp_completion").strip().lower()
+if LLM_MODE not in {"llamacpp_completion", "openai_chat"}:
+    LLM_MODE = "llamacpp_completion"
+
+# Llama.cpp: endpoint /completion completo (o base)
 LLM_BACKEND_URL = os.environ.get("LLM_BACKEND_URL", "http://127.0.0.1:8081/completion")
+
+# KoboldCpp (OpenAI-compatible)
+OPENAI_BASE_URL = os.environ.get("OPENAI_BASE_URL", "http://127.0.0.1:8081/v1")
+OPENAI_MODEL = os.environ.get("OPENAI_MODEL", "local-model")
 
 
 def _get_env_float(name: str, default: float) -> float:
@@ -190,6 +197,8 @@ LLM_CONNECT_TIMEOUT = _get_env_float("LLM_CONNECT_TIMEOUT", 5.0)
 LLM_TOTAL_TIMEOUT = _get_env_float("LLM_TOTAL_TIMEOUT", 180.0)
 LLM_DEFAULT_N_PREDICT = _get_env_int("LLM_DEFAULT_N_PREDICT", 96)
 LLM_HEALTH_TTL_SECONDS = _get_env_int("LLM_HEALTH_TTL_SECONDS", 10)
+LLM_HEALTH_GRACE_SECONDS = _get_env_int("LLM_HEALTH_GRACE_SECONDS", 60)
+LLM_SERVER_STARTED_AT = time.monotonic()
 
 
 # ================== FALLBACK UTILS ==================
@@ -500,12 +509,35 @@ async def health(request: web.Request) -> web.Response:
 
 
 async def llm_health(request: web.Request) -> web.Response:
-    host, port = _get_llm_backend_host_port(LLM_BACKEND_URL)
+    if time.monotonic() - LLM_SERVER_STARTED_AT < LLM_HEALTH_GRACE_SECONDS:
+        payload = {
+            "status": "warming_up",
+            "ok": False,
+            "reason": "grace_period",
+            "checked_at": now_iso(),
+            "cached": False,
+        }
+        return web.json_response(payload)
+
+    llm_health_url, _ = _get_llm_health_target()
+    if not llm_health_url:
+        payload = {
+            "status": "disabled",
+            "ok": False,
+            "reason": "disabled",
+            "checked_at": now_iso(),
+            "cached": False,
+        }
+        return web.json_response(payload)
+
+    host, port = _get_llm_backend_host_port(llm_health_url)
     socket_ok = await _check_llm_socket(host, port, timeout=0.15)
     if not socket_ok:
         payload = {
             "status": "down",
-            "llm_backend_url": LLM_BACKEND_URL,
+            "ok": False,
+            "reason": "socket_unreachable",
+            "llm_backend_url": llm_health_url,
             "checked_at": now_iso(),
             "cached": False,
         }
@@ -519,25 +551,26 @@ async def llm_health(request: web.Request) -> web.Response:
         payload = _llm_health_payload_from_cache(cached=True, stale=False)
         return web.json_response(payload)
 
-    task = _ensure_llm_health_task()
-    if task:
-        try:
-            result = await asyncio.wait_for(asyncio.shield(task), timeout=0.2)
-            payload = {
-                "status": result["status"],
-                "llm_backend_url": LLM_BACKEND_URL,
-                "cached": False,
-                "stale": False,
-                "checked_at": result["checked_at"],
-                "latency_ms": result["latency_ms"],
-                "error_kind": result["error_kind"],
-            }
-            return web.json_response(payload)
-        except asyncio.TimeoutError:
-            payload = _llm_health_payload_from_cache(cached=True, stale=True)
-            return web.json_response(payload)
-
-    payload = _llm_health_payload_from_cache(cached=True, stale=True)
+    result = await _refresh_llm_health_cache()
+    payload = {
+        "status": result["status"],
+        "ok": result["status"] == "up",
+        "llm_backend_url": llm_health_url,
+        "cached": False,
+        "stale": False,
+        "checked_at": result["checked_at"],
+        "latency_ms": result["latency_ms"],
+        "error_kind": result["error_kind"],
+    }
+    if result["status"] == "warming_up":
+        payload["ok"] = False
+        payload["reason"] = "warming_up"
+    elif result["status"] == "disabled":
+        payload["ok"] = False
+        payload["reason"] = "disabled"
+    elif result["status"] != "up":
+        payload["ok"] = False
+        payload["reason"] = "unreachable"
     return web.json_response(payload)
 
 
@@ -2214,7 +2247,6 @@ llm_health_cache: Dict[str, Any] = {
     "error_kind": None,
     "checked_at": None,
 }
-llm_health_task: Optional[asyncio.Task] = None
 llm_health_lock = asyncio.Lock()
 
 def _build_llm_ping_url(url: str) -> str:
@@ -2225,7 +2257,51 @@ def _build_llm_ping_url(url: str) -> str:
     return urlunsplit((parts.scheme, parts.netloc, path, parts.query, parts.fragment))
 
 
+def _get_llm_chat_target(prompt: str, n_predict: int) -> tuple[Optional[str], Optional[dict]]:
+    if LLM_MODE == "openai_chat":
+        base = (OPENAI_BASE_URL or "").strip()
+        if not base:
+            return None, None
+        url = f"{base.rstrip('/')}/chat/completions"
+        payload = {
+            "model": OPENAI_MODEL,
+            "messages": [{"role": "user", "content": prompt}],
+            "max_tokens": n_predict,
+        }
+        return url, payload
+
+    backend = (LLM_BACKEND_URL or "").strip()
+    if not backend:
+        return None, None
+    url = _build_llm_ping_url(backend)
+    payload = {"prompt": prompt, "n_predict": n_predict}
+    return url, payload
+
+
+def _get_llm_health_target() -> tuple[Optional[str], Optional[dict]]:
+    if LLM_MODE == "openai_chat":
+        base = (OPENAI_BASE_URL or "").strip()
+        if not base:
+            return None, None
+        url = f"{base.rstrip('/')}/chat/completions"
+        payload = {
+            "model": OPENAI_MODEL,
+            "messages": [{"role": "user", "content": "ping"}],
+            "max_tokens": 1,
+        }
+        return url, payload
+
+    backend = (LLM_BACKEND_URL or "").strip()
+    if not backend:
+        return None, None
+    url = _build_llm_ping_url(backend)
+    payload = {"prompt": "ping", "n_predict": 1}
+    return url, payload
+
+
 def _get_llm_backend_host_port(url: str) -> tuple[str, int]:
+    if not url:
+        return "127.0.0.1", 0
     parts = urlsplit(url)
     host = parts.hostname or "127.0.0.1"
     port = parts.port
@@ -2245,9 +2321,10 @@ async def _check_llm_socket(host: str, port: int, timeout: float = 0.15) -> bool
     return await asyncio.to_thread(_try_connect)
 
 
-async def ping_llm(url: str) -> str:
-    payload = {"prompt": "ping", "n_predict": 1}
-    ping_url = _build_llm_ping_url(url)
+async def ping_llm() -> str:
+    ping_url, payload = _get_llm_health_target()
+    if not ping_url or not payload:
+        return "disabled"
     try:
         timeout = httpx.Timeout(LLM_CONNECT_TIMEOUT, connect=LLM_CONNECT_TIMEOUT)
         async with httpx.AsyncClient(timeout=timeout) as client:
@@ -2264,16 +2341,16 @@ async def ping_llm(url: str) -> str:
         return "down"
 
 
-async def ping_llm_with_backoff(url: str, retries: int = 3) -> str:
+async def ping_llm_with_backoff(retries: int = 3) -> str:
     backoff_schedule = [0.5, 1, 2]
-    status = await ping_llm(url)
+    status = await ping_llm()
     if status != "warming_up":
         return status
     for attempt in range(1, retries + 1):
         wait_time = backoff_schedule[min(attempt - 1, len(backoff_schedule) - 1)]
         logger.info("LLM ping warming up, retry %s/%s in %.1fs", attempt, retries, wait_time)
         await asyncio.sleep(wait_time)
-        status = await ping_llm(url)
+        status = await ping_llm()
         if status != "warming_up":
             break
     return status
@@ -2281,9 +2358,21 @@ async def ping_llm_with_backoff(url: str, retries: int = 3) -> str:
 
 def _llm_health_payload_from_cache(*, cached: bool, stale: bool) -> dict:
     checked_at = llm_health_cache.get("checked_at") or now_iso()
+    health_url, _ = _get_llm_health_target()
+    status = llm_health_cache.get("status", "down")
+    ok = status == "up"
+    reason = None
+    if status in {"warming_up", "disabled"}:
+        ok = False
+        reason = status
+    elif status != "up":
+        ok = False
+        reason = "unreachable"
     return {
-        "status": llm_health_cache.get("status", "down"),
-        "llm_backend_url": LLM_BACKEND_URL,
+        "status": status,
+        "ok": ok,
+        "reason": reason,
+        "llm_backend_url": health_url,
         "cached": cached,
         "stale": stale,
         "checked_at": checked_at,
@@ -2292,9 +2381,15 @@ def _llm_health_payload_from_cache(*, cached: bool, stale: bool) -> dict:
     }
 
 
-async def _probe_llm_health(url: str) -> dict:
-    payload = {"prompt": "ping", "n_predict": 1}
-    ping_url = _build_llm_ping_url(url)
+async def _probe_llm_health() -> dict:
+    ping_url, payload = _get_llm_health_target()
+    if not ping_url or not payload:
+        return {
+            "status": "disabled",
+            "latency_ms": 0,
+            "error_kind": "disabled",
+            "checked_at": now_iso(),
+        }
     start = time.monotonic()
     status = "down"
     error_kind = None
@@ -2305,6 +2400,8 @@ async def _probe_llm_health(url: str) -> dict:
         status_code = response.status_code
         if status_code in (200, 400, 404):
             status = "up"
+        elif status_code == 503:
+            status = "warming_up"
         else:
             status = "down"
     except httpx.TimeoutException:
@@ -2318,7 +2415,7 @@ async def _probe_llm_health(url: str) -> dict:
         error_kind = "conn"
     latency_ms = int((time.monotonic() - start) * 1000)
     checked_at = now_iso()
-    if status == "up":
+    if status in {"up", "warming_up"}:
         error_kind = None
     return {
         "status": status,
@@ -2330,7 +2427,7 @@ async def _probe_llm_health(url: str) -> dict:
 
 async def _refresh_llm_health_cache() -> dict:
     async with llm_health_lock:
-        result = await _probe_llm_health(LLM_BACKEND_URL)
+        result = await _probe_llm_health()
         previous_status = llm_health_cache.get("status")
         llm_health_cache.update(
             {
@@ -2344,14 +2441,6 @@ async def _refresh_llm_health_cache() -> dict:
         if previous_status and previous_status != result["status"]:
             logger.info("LLM health status changed %s -> %s", previous_status, result["status"])
         return dict(llm_health_cache)
-
-
-def _ensure_llm_health_task() -> Optional[asyncio.Task]:
-    global llm_health_task
-    if llm_health_task and not llm_health_task.done():
-        return llm_health_task
-    llm_health_task = asyncio.create_task(_refresh_llm_health_cache())
-    return llm_health_task
 
 
 async def llm_complete(request: web.Request) -> web.Response:
@@ -2384,17 +2473,25 @@ async def llm_chat(request: web.Request) -> web.Response:
     prompt_preview = prompt[:60]
     n_predict = payload.get("n_predict")
     if n_predict is None:
-        payload["n_predict"] = LLM_DEFAULT_N_PREDICT
         n_predict = LLM_DEFAULT_N_PREDICT
     else:
         try:
-            payload["n_predict"] = int(n_predict)
-            n_predict = payload["n_predict"]
+            n_predict = int(n_predict)
         except (TypeError, ValueError):
-            payload["n_predict"] = LLM_DEFAULT_N_PREDICT
             n_predict = LLM_DEFAULT_N_PREDICT
 
-    response, error = await call_llm_with_retry(payload)
+    llm_url, llm_payload = _get_llm_chat_target(prompt, n_predict)
+    if not llm_url or not llm_payload:
+        return web.json_response(
+            _build_llm_error_payload(
+                "LLM_DISABLED",
+                "LLM disabilitato o backend non configurato",
+                "disabled",
+            ),
+            status=503,
+        )
+
+    response, error = await call_llm_with_retry(llm_url, llm_payload)
     llm_http_code = response.status_code if response else None
     log_event(
         "llm_chat_proxy",
@@ -2402,6 +2499,7 @@ async def llm_chat(request: web.Request) -> web.Response:
         prompt_preview=prompt_preview,
         n_predict=n_predict,
         llm_http_code=llm_http_code,
+        llm_mode=LLM_MODE,
         proxy_status=error.get("status") if error else None,
     )
     if error:
@@ -2451,12 +2549,14 @@ async def llm_chat(request: web.Request) -> web.Response:
     if not content:
         content = "[LLM non ha restituito testo utile]"
 
-    return web.json_response({"content": content})
+    return web.json_response({"content": content, "ok": True})
 
 
 async def fetch_llm_health() -> dict:
+    if time.monotonic() - LLM_SERVER_STARTED_AT < LLM_HEALTH_GRACE_SECONDS:
+        return {"status": "warming_up", "latency_ms": 0}
     start = time.monotonic()
-    status = await ping_llm(LLM_BACKEND_URL)
+    status = await ping_llm()
     latency_ms = int((time.monotonic() - start) * 1000)
     if status == "reachable":
         mapped_status = "ok"
@@ -2477,7 +2577,9 @@ def _build_llm_error_payload(code: str, message: str, detail: str) -> dict:
     }
 
 
-async def call_llm_with_retry(payload: dict) -> tuple[Optional[httpx.Response], Optional[dict]]:
+async def call_llm_with_retry(
+    llm_url: str, payload: dict
+) -> tuple[Optional[httpx.Response], Optional[dict]]:
     backoff_schedule = [0.5, 1, 2]
     max_attempts = len(backoff_schedule)
 
@@ -2488,7 +2590,7 @@ async def call_llm_with_retry(payload: dict) -> tuple[Optional[httpx.Response], 
             attempt_start = time.monotonic()
             should_retry = False
             try:
-                response = await client.post(LLM_BACKEND_URL, json=payload)
+                response = await client.post(llm_url, json=payload)
                 elapsed = time.monotonic() - attempt_start
                 status_code = response.status_code
                 logger.info(
@@ -2531,14 +2633,14 @@ async def call_llm_with_retry(payload: dict) -> tuple[Optional[httpx.Response], 
                     elapsed,
                     exc.__class__.__name__,
                     exc,
-                    LLM_BACKEND_URL,
+                    llm_url,
                 )
                 last_error = {
                     "status": 503,
                     "payload": {
                         "status": "error",
                         "message": "LLM unreachable",
-                        "llm_backend_url": LLM_BACKEND_URL,
+                        "llm_backend_url": llm_url,
                         "error_type": "connection",
                     },
                 }
@@ -2587,7 +2689,7 @@ async def call_llm_with_retry(payload: dict) -> tuple[Optional[httpx.Response], 
                 break
 
     if last_error and last_error.get("payload", {}).get("code") == "LLM_UNREACHABLE":
-        ping_status = await ping_llm_with_backoff(LLM_BACKEND_URL)
+        ping_status = await ping_llm_with_backoff()
         if ping_status == "warming_up":
             return None, {
                 "status": 503,
