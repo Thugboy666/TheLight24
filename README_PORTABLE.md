@@ -19,6 +19,7 @@ runtime\
 ├─ python\python.exe     (Python 3.10 portable/embedded)
 ├─ venv\                 (creato dagli script)
 ├─ bin\llama-server.exe
+├─ bin\koboldcpp.exe   (opzionale, fallback senza VC runtime)
 ├─ bin\cloudflared.exe
 ├─ llm\models\*.gguf
 ├─ logs\
@@ -30,8 +31,9 @@ runtime\
 1. Copia `runtime\.env.example` in `C:\Ormanet\runtime\.env` e personalizza i valori.
 2. Metti **Python 3.10 portable** in `C:\Ormanet\runtime\python\python.exe`.
 3. Metti `llama-server.exe` in `C:\Ormanet\runtime\bin\llama-server.exe`.
-4. Metti `cloudflared.exe` in `C:\Ormanet\runtime\bin\cloudflared.exe`.
-5. Metti il modello GGUF (default Qwen 2.5 3B instruct) in `C:\Ormanet\runtime\llm\models\`.
+4. (Opzionale) Metti `koboldcpp.exe` in `C:\Ormanet\runtime\bin\koboldcpp.exe` per usare il backend senza runtime VC.
+5. Metti `cloudflared.exe` in `C:\Ormanet\runtime\bin\cloudflared.exe`.
+6. Metti il modello GGUF (default Qwen 2.5 3B instruct) in `C:\Ormanet\runtime\llm\models\`.
 
 > Default LLM: `qwen2.5-3b-instruct-q4_k_m.gguf`. Puoi cambiare modello modificando `LLM_MODEL` in `runtime\.env`.
 
@@ -49,6 +51,22 @@ Avvierà:
 - cloudflared (se `CLOUDFLARE_TUNNEL_TOKEN` è impostato)
 
 Log in `C:\Ormanet\runtime\logs\`.
+
+## Usare KoboldCpp (senza installazioni di sistema)
+
+KoboldCpp è un singolo `.exe` che non richiede Visual C++ Redistributable. Per usarlo:
+
+1. Copia `koboldcpp.exe` in `C:\Ormanet\runtime\bin\`.
+2. In `C:\Ormanet\runtime\.env` imposta:
+   ```
+   LLM_PROVIDER=koboldcpp
+   KOBOLDCPP_EXE=runtime/bin/koboldcpp.exe
+   KOBOLDCPP_HOST=127.0.0.1
+   KOBOLDCPP_PORT=8081
+   ```
+3. Avvia `scripts\windows\start_thelight.ps1` come sempre: lo script preferisce KoboldCpp se presente.
+
+Se vuoi tornare a llama.cpp, imposta `LLM_PROVIDER=llamacpp` e verifica che `llama-server.exe` sia presente.
 
 ## Stop
 

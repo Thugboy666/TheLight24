@@ -10,6 +10,19 @@ function Set-EnvDefaults {
     if (-not $env:LLM_TOTAL_TIMEOUT) { $env:LLM_TOTAL_TIMEOUT = "180" }
     if (-not $env:LLM_CONNECT_TIMEOUT) { $env:LLM_CONNECT_TIMEOUT = "5" }
     if (-not $env:LLM_DEFAULT_N_PREDICT) { $env:LLM_DEFAULT_N_PREDICT = "96" }
+    if (-not $env:KOBOLDCPP_EXE) { $env:KOBOLDCPP_EXE = (Join-Path $RuntimeDir "bin\koboldcpp.exe") }
+    if (-not $env:KOBOLDCPP_HOST) { $env:KOBOLDCPP_HOST = "127.0.0.1" }
+    if (-not $env:KOBOLDCPP_PORT) { $env:KOBOLDCPP_PORT = "8081" }
+    if ($null -eq $env:KOBOLDCPP_ARGS) { $env:KOBOLDCPP_ARGS = "" }
+    if (-not $env:OPENAI_BASE_URL) { $env:OPENAI_BASE_URL = "http://127.0.0.1:8081/v1" }
+    if (-not $env:OPENAI_MODEL) { $env:OPENAI_MODEL = "local-model" }
+    if (-not $env:LLM_PROVIDER) {
+        if (Test-Path $env:KOBOLDCPP_EXE) {
+            $env:LLM_PROVIDER = "koboldcpp"
+        } else {
+            $env:LLM_PROVIDER = "llamacpp"
+        }
+    }
 }
 
 function Load-DotEnv($Path) {
@@ -74,14 +87,22 @@ if ($NewVenv) {
 }
 
 $LlamaServer = Join-Path $RuntimeDir "bin\llama-server.exe"
+$KoboldExe = $env:KOBOLDCPP_EXE
+$KoboldHost = $env:KOBOLDCPP_HOST
+$KoboldPort = $env:KOBOLDCPP_PORT
+$KoboldArgs = $env:KOBOLDCPP_ARGS
 $ModelPath = Join-Path $RuntimeDir (Join-Path "llm\models" $env:LLM_MODEL)
+if (-not $env:LLM_PROVIDER) { $env:LLM_PROVIDER = "llamacpp" }
+$LlmProvider = $env:LLM_PROVIDER.ToLower()
 
 Write-Report ("Get-Location: {0}" -f (Get-Location))
 Write-Report ("RepoRoot: {0}" -f $RepoRoot)
 Write-Report ("RuntimeDir: {0}" -f $RuntimeDir)
 Write-Report ("llama-server.exe: {0}" -f $LlamaServer)
+Write-Report ("koboldcpp.exe: {0}" -f $KoboldExe)
 Write-Report ("cloudflared.exe: {0}" -f (Join-Path $RuntimeDir "bin\cloudflared.exe"))
 Write-Report ("Model GGUF: {0}" -f $ModelPath)
+Write-Report ("LLM_PROVIDER: {0}" -f $LlmProvider)
 Write-Report "runtime\\bin contents:"
 if (Test-Path (Join-Path $RuntimeDir "bin")) {
     Get-ChildItem -Path (Join-Path $RuntimeDir "bin") -Name | ForEach-Object {
@@ -116,14 +137,11 @@ try {
 }
 Write-Report ("llama-server version: {0}" -f $llamaVersion)
 
-if (-not (Test-Path $LlamaServer)) {
-    Write-Error "llama-server.exe non trovato: $LlamaServer"
-    exit 1
-}
-
+$LlmStartAllowed = $true
 if (-not (Test-Path $ModelPath)) {
-    Write-Error "Modello GGUF non trovato: $ModelPath"
-    exit 1
+    Write-Report "Modello GGUF non trovato: $ModelPath"
+    Write-Host "Modello GGUF non trovato: $ModelPath"
+    $LlmStartAllowed = $false
 }
 
 $Threads = $env:LLM_THREADS
@@ -131,89 +149,144 @@ if (-not $Threads) { $Threads = [Environment]::ProcessorCount }
 
 $LlmOut = Join-Path $LogDir "llm_out.log"
 $LlmErr = Join-Path $LogDir "llm_err.log"
+if ($LlmProvider -eq "koboldcpp") {
+    $LlmOut = Join-Path $LogDir "kobold_out.log"
+    $LlmErr = Join-Path $LogDir "kobold_err.log"
+}
 $LlmPidFile = Join-Path $PidDir "llm.pid"
 New-Item -ItemType File -Force -Path $LlmOut, $LlmErr | Out-Null
 
-$LlmExe = Join-Path $RuntimeDir "bin\llama-server.exe"
-$LlmBinDir = Join-Path $RuntimeDir "bin"
+$LlmExe = $null
+$LlmBinDir = $null
+$LlmHost = $env:LLM_HOST
+$LlmPort = $env:LLM_PORT
 $SafeModeApplied = $false
-if ($env:LLM_SAFE_MODE -and $env:LLM_SAFE_MODE -eq "1") {
-    $RpcDll = Join-Path $LlmBinDir "ggml-rpc.dll"
-    $RpcDllDisabled = Join-Path $LlmBinDir "ggml-rpc.dll.disabled"
-    if (Test-Path $RpcDll) {
-        Move-Item -Path $RpcDll -Destination $RpcDllDisabled -Force
-        $SafeModeApplied = $true
-        Write-Report "LLM_SAFE_MODE=1: ggml-rpc.dll disabilitata (rinominata in ggml-rpc.dll.disabled)."
-    } else {
-        Write-Report "LLM_SAFE_MODE=1: ggml-rpc.dll non trovata; nessuna rinomina effettuata."
+$llmProc = $null
+
+if ($LlmProvider -eq "koboldcpp") {
+    $LlmExe = $KoboldExe
+    $LlmHost = $KoboldHost
+    $LlmPort = $KoboldPort
+    if (-not (Test-Path $LlmExe)) {
+        Write-Report "koboldcpp.exe non trovato: $LlmExe"
+        Write-Host "koboldcpp.exe non trovato: $LlmExe"
+        $LlmStartAllowed = $false
+    }
+    if ($LlmStartAllowed) {
+        $LlmBinDir = Split-Path $LlmExe
+        $ArgumentString = "--model `"$ModelPath`" --host $LlmHost --port $LlmPort --contextsize 1024"
+        if ($KoboldArgs) {
+            $ArgumentString = "$ArgumentString $KoboldArgs"
+        }
+        $llmProc = Start-Process -FilePath $LlmExe -ArgumentList $ArgumentString -WorkingDirectory $LlmBinDir -RedirectStandardOutput $LlmOut -RedirectStandardError $LlmErr -WindowStyle Hidden -PassThru
+    }
+} else {
+    $LlmProvider = "llamacpp"
+    $LlmExe = $LlamaServer
+    $LlmBinDir = Join-Path $RuntimeDir "bin"
+    if (-not (Test-Path $LlmExe)) {
+        Write-Report "llama-server.exe non trovato: $LlmExe"
+        Write-Host "llama-server.exe non trovato: $LlmExe"
+        $LlmStartAllowed = $false
+    }
+    if ($LlmStartAllowed) {
+        if ($env:LLM_SAFE_MODE -and $env:LLM_SAFE_MODE -eq "1") {
+            $RpcDll = Join-Path $LlmBinDir "ggml-rpc.dll"
+            $RpcDllDisabled = Join-Path $LlmBinDir "ggml-rpc.dll.disabled"
+            if (Test-Path $RpcDll) {
+                Move-Item -Path $RpcDll -Destination $RpcDllDisabled -Force
+                $SafeModeApplied = $true
+                Write-Report "LLM_SAFE_MODE=1: ggml-rpc.dll disabilitata (rinominata in ggml-rpc.dll.disabled)."
+            } else {
+                Write-Report "LLM_SAFE_MODE=1: ggml-rpc.dll non trovata; nessuna rinomina effettuata."
+            }
+        }
+        $env:PATH = "$LlmBinDir;$env:PATH"
+        $Args = @(
+            "--host", $LlmHost,
+            "--port", $LlmPort,
+            "--model", $ModelPath,
+            "--ctx-size", "1024",
+            "--n-parallel", "2"
+        )
+        $llmProc = Start-Process -FilePath $LlmExe -ArgumentList $Args -WorkingDirectory $LlmBinDir -RedirectStandardOutput $LlmOut -RedirectStandardError $LlmErr -WindowStyle Hidden -PassThru
     }
 }
-$env:PATH = "$LlmBinDir;$env:PATH"
-$Args = @(
-    "--host", "127.0.0.1",
-    "--port", "8081",
-    "--model", $ModelPath,
-    "--ctx-size", "1024",
-    "--n-parallel", "2"
-)
 
-$llmProc = Start-Process -FilePath $LlmExe -ArgumentList $Args -WorkingDirectory $LlmBinDir -RedirectStandardOutput $LlmOut -RedirectStandardError $LlmErr -WindowStyle Hidden -PassThru
-$llmProc.Id | Out-File -FilePath $LlmPidFile -Encoding ascii
+if ($llmProc) {
+    $llmProc.Id | Out-File -FilePath $LlmPidFile -Encoding ascii
+}
 
 $LlmRequired = $true
 if ($env:LLM_REQUIRED -and $env:LLM_REQUIRED -eq "0") {
     $LlmRequired = $false
 }
 
+$LlmProcessName = "llama-server"
+if ($LlmProvider -eq "koboldcpp") {
+    $LlmProcessName = "koboldcpp"
+}
+
 $llmReady = $false
 Write-Report "Diagnostica LLM dopo avvio:"
-Write-Report "netstat :8081:"
-$netstatAfterStart = cmd /c "netstat -ano | findstr :8081"
+Write-Report ("netstat :{0}:" -f $LlmPort)
+$netstatAfterStart = cmd /c ("netstat -ano | findstr :{0}" -f $LlmPort)
 if ($netstatAfterStart) {
     $netstatAfterStart | ForEach-Object { Write-Report ("  {0}" -f $_) }
 } else {
     Write-Report "  (none)"
 }
-Write-Report "Get-Process llama-server:"
-Get-Process llama-server -ErrorAction SilentlyContinue | ForEach-Object {
+Write-Report ("Get-Process {0}:" -f $LlmProcessName)
+Get-Process $LlmProcessName -ErrorAction SilentlyContinue | ForEach-Object {
     Write-Report ("  Id={0} CPU={1} WS={2}" -f $_.Id, $_.CPU, $_.WorkingSet64)
 }
 
-$deadline = (Get-Date).AddSeconds(20)
-while ((Get-Date) -lt $deadline) {
-    $llmProc.Refresh()
-    if ($llmProc.HasExited) {
-        break
+if ($LlmStartAllowed) {
+    $deadline = (Get-Date).AddSeconds(30)
+    while ((Get-Date) -lt $deadline) {
+        if ($llmProc) {
+            $llmProc.Refresh()
+            if ($llmProc.HasExited) {
+                break
+            }
+        }
+        $listening = Get-NetTCPConnection -LocalPort $LlmPort -State Listen -ErrorAction SilentlyContinue
+        if ($listening) {
+            $llmReady = $true
+            break
+        }
+        Start-Sleep -Milliseconds 250
     }
-    $listening = Get-NetTCPConnection -LocalPort 8081 -State Listen -ErrorAction SilentlyContinue
-    if ($listening) {
-        $llmReady = $true
-        break
-    }
-    Start-Sleep -Milliseconds 250
 }
 
 if (-not $llmReady) {
-    $llmProc.Refresh()
-    $exitCode = $null
-    if ($llmProc.HasExited) {
-        $exitCode = $llmProc.ExitCode
-        Write-Report ("LLM process died before opening port 8081. ExitCode={0}" -f $exitCode)
-        Write-Host ("LLM process died before opening port 8081. ExitCode={0}" -f $exitCode)
-    } else {
-        Write-Report "LLM not listening on port 8081 after 20s (process may be dead or stuck)."
-        Write-Host "LLM not listening on port 8081 after 20s (process may be dead or stuck)."
+    if ($llmProc) {
+        $llmProc.Refresh()
     }
-    Write-Host "Suggerimento: installa Microsoft Visual C++ Redistributable 2015-2022 (x64) se non presente."
-    Write-Report "netstat :8081 (post-wait):"
-    $netstatAfter = cmd /c "netstat -ano | findstr :8081"
+    $exitCode = $null
+    if ($llmProc -and $llmProc.HasExited) {
+        $exitCode = $llmProc.ExitCode
+        Write-Report ("LLM process died before opening port {0}. ExitCode={1}" -f $LlmPort, $exitCode)
+        Write-Host ("LLM process died before opening port {0}. ExitCode={1}" -f $LlmPort, $exitCode)
+    } elseif (-not $LlmStartAllowed) {
+        Write-Report "LLM not started (missing exe or model)."
+        Write-Host "LLM not started (missing exe or model)."
+    } else {
+        Write-Report ("LLM not listening on port {0} after 30s (process may be dead or stuck)." -f $LlmPort)
+        Write-Host ("LLM not listening on port {0} after 30s (process may be dead or stuck)." -f $LlmPort)
+    }
+    if ($LlmProvider -eq "llamacpp") {
+        Write-Host "Suggerimento: installa Microsoft Visual C++ Redistributable 2015-2022 (x64) se non presente."
+    }
+    Write-Report ("netstat :{0} (post-wait):" -f $LlmPort)
+    $netstatAfter = cmd /c ("netstat -ano | findstr :{0}" -f $LlmPort)
     if ($netstatAfter) {
         $netstatAfter | ForEach-Object { Write-Report ("  {0}" -f $_) }
     } else {
         Write-Report "  (none)"
     }
-    Write-Report "Get-Process llama-server (post-wait):"
-    Get-Process llama-server -ErrorAction SilentlyContinue | ForEach-Object {
+    Write-Report ("Get-Process {0} (post-wait):" -f $LlmProcessName)
+    Get-Process $LlmProcessName -ErrorAction SilentlyContinue | ForEach-Object {
         Write-Report ("  Id={0} CPU={1} WS={2}" -f $_.Id, $_.CPU, $_.WorkingSet64)
     }
     if ($llmProc -and -not $llmProc.HasExited) {
@@ -231,7 +304,8 @@ if (-not $llmReady) {
     }
 
     if ($LlmRequired) {
-        exit 1
+        Write-Host "LLM_REQUIRED=1 ma il backend non è pronto: avvio API comunque in modalità degradada."
+        Write-Report "LLM_REQUIRED=1 ma il backend non è pronto: avvio API comunque in modalità degradata."
     }
 }
 
@@ -242,12 +316,29 @@ if ($llmReady -and $SafeModeApplied) {
 
 $env:API_HOST = $env:APP_HOST
 $env:API_PORT = $env:APP_PORT
-$env:LLM_BACKEND_URL = "http://127.0.0.1:8081/completion"
+$env:LLM_MODE = "llamacpp_completion"
+$env:LLM_BACKEND_URL = ("http://{0}:{1}/completion" -f $env:LLM_HOST, $env:LLM_PORT)
+$env:OPENAI_BASE_URL = ("http://{0}:{1}/v1" -f $KoboldHost, $KoboldPort)
+$env:LLM_PROVIDER = $LlmProvider
 $env:LLM_CONNECT_TIMEOUT = "2"
 $env:LLM_TOTAL_TIMEOUT = "30"
 $env:LLM_DEFAULT_N_PREDICT = "96"
 if (-not $llmReady -and -not $LlmRequired) {
     $env:LLM_DISABLED = "1"
+}
+if ($LlmProvider -eq "koboldcpp") {
+    $env:LLM_MODE = "openai_chat"
+    if (-not $env:OPENAI_BASE_URL) {
+        $env:OPENAI_BASE_URL = ("http://{0}:{1}/v1" -f $KoboldHost, $KoboldPort)
+    }
+} else {
+    $env:LLM_MODE = "llamacpp_completion"
+    $env:LLM_BACKEND_URL = ("http://{0}:{1}/completion" -f $env:LLM_HOST, $env:LLM_PORT)
+}
+if (-not $llmReady) {
+    $env:LLM_DISABLED = "1"
+    $env:LLM_BACKEND_URL = ""
+    $env:OPENAI_BASE_URL = ""
 }
 
 $ApiLog = Join-Path $LogDir "api.log"
@@ -273,5 +364,46 @@ if ($env:CLOUDFLARE_TUNNEL_TOKEN) {
     $cfProc = Start-Process -FilePath $Cloudflared -ArgumentList $cfArgs -WorkingDirectory (Split-Path $Cloudflared) -RedirectStandardOutput $CfLog -RedirectStandardError $CfErr -PassThru
     $cfProc.Id | Out-File -FilePath $CfPidFile -Encoding ascii
 }
+
+Write-Host "=== DIAGNOSTICA ==="
+Write-Report "=== DIAGNOSTICA ==="
+function Write-ExeInfo {
+    param([string]$Label, [string]$Path)
+    if (Test-Path $Path) {
+        $item = Get-Item $Path
+        Write-Report ("{0}: {1} size={2} lastwrite={3}" -f $Label, $item.FullName, $item.Length, $item.LastWriteTime)
+    } else {
+        Write-Report ("{0}: missing ({1})" -f $Label, $Path)
+    }
+}
+Write-ExeInfo -Label "llama-server.exe" -Path $LlamaServer
+Write-ExeInfo -Label "koboldcpp.exe" -Path $KoboldExe
+
+$net8080 = cmd /c "netstat -ano | findstr :8080"
+Write-Report "netstat :8080:"
+if ($net8080) { $net8080 | ForEach-Object { Write-Report ("  {0}" -f $_) } } else { Write-Report "  (none)" }
+$net8081 = cmd /c "netstat -ano | findstr :8081"
+Write-Report "netstat :8081:"
+if ($net8081) { $net8081 | ForEach-Object { Write-Report ("  {0}" -f $_) } } else { Write-Report "  (none)" }
+
+if (Test-Path $LlmErr) {
+    Write-Report "---- LLM stderr (last 50 lines) ----"
+    Get-Content -Path $LlmErr -Tail 50 | ForEach-Object { Write-Report $_ }
+}
+if (Test-Path $LlmOut) {
+    Write-Report "---- LLM stdout (last 50 lines) ----"
+    Get-Content -Path $LlmOut -Tail 50 | ForEach-Object { Write-Report $_ }
+}
+
+Start-Sleep -Seconds 2
+$healthUrl = "http://127.0.0.1:$($env:APP_PORT)/api/llm/health"
+$chatUrl = "http://127.0.0.1:$($env:APP_PORT)/api/llm/chat"
+Write-Report ("curl {0}" -f $healthUrl)
+$healthResponse = & curl.exe -s $healthUrl
+if ($healthResponse) { Write-Report $healthResponse }
+Write-Report ("curl {0} (ping)" -f $chatUrl)
+$chatPayload = '{"prompt":"ping","n_predict":32}'
+$chatResponse = & curl.exe -s -H "Content-Type: application/json" -d $chatPayload $chatUrl
+if ($chatResponse) { Write-Report $chatResponse }
 
 Write-Host "TheLight24 avviato. Log in $LogDir"
